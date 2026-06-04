@@ -35,7 +35,43 @@ function formatNumberWithSpaces(num) {
 
 function parseSpacedNumber(str) {
   if (!str) return 0;
-  return parseInt(str.replace(/\s/g, '')) || 0;
+  return parseFloat(str.replace(/\s/g, '')) || 0;
+}
+
+/**
+ * Normalize dimension string:
+ * - Replace commas with dots (European decimal separator)
+ * - Standardize separators: "×", "*", "X", "x" all become "x"
+ * - Remove spaces around separator
+ * - Result like: "1.2x3.3"
+ */
+function normalizeRazmer(value) {
+  // First replace comma with dot for decimal
+  let s = value.replace(/,/g, '.');
+  // Normalize all dimension separators to "x"
+  s = s.replace(/[×*]/g, 'x');
+  s = s.replace(/\s*[xX]\s*/g, 'x');
+  // Remove any remaining spaces
+  s = s.replace(/\s/g, '');
+  // Remove any characters that aren't digits, dots, or 'x'/'ga'
+  s = s.replace(/[^0-9.xga]/g, '');
+  // Fix cases like "1.2.3" → keep only first dot in each number
+  // Split by 'x' or 'ga', fix each part
+  const sep = s.includes('ga') ? 'ga' : s.includes('x') ? 'x' : null;
+  if (sep) {
+    const parts = s.split(sep);
+    if (parts.length === 2) {
+      const fixDot = (str) => {
+        const dotIdx = str.indexOf('.');
+        if (dotIdx >= 0) {
+          return str.substring(0, dotIdx + 1) + str.substring(dotIdx + 1).replace(/\./g, '');
+        }
+        return str;
+      };
+      return fixDot(parts[0]) + 'x' + fixDot(parts[1]);
+    }
+  }
+  return s;
 }
 
 function parseRazmer(value) {
@@ -143,14 +179,16 @@ export default function CreateOrder() {
     newItems[index][field] = value;
 
     if (field === 'razmer') {
-      const allowed = value.replace(/[^0-9xXga*\s×]/g, '');
-      newItems[index].razmer = allowed;
+      // Normalize: allow decimals, commas, various separators
+      const normalized = normalizeRazmer(value);
+      newItems[index].razmer = normalized;
       
-      const parsed = parseRazmer(allowed);
+      const parsed = parseRazmer(normalized);
       if (parsed) {
         newItems[index].width = parsed.width;
         newItems[index].height = parsed.height;
-        newItems[index].quantity = parsed.width * parsed.height;
+        // Calculate area with 2 decimal precision
+        newItems[index].quantity = Math.round(parsed.width * parsed.height * 100) / 100;
       } else {
         newItems[index].width = '';
         newItems[index].height = '';
@@ -236,7 +274,7 @@ export default function CreateOrder() {
         items: items.map(item => ({
           product_id: parseInt(item.product_id),
           quantity: parseFloat(item.quantity),
-          price: parseInt(item.price),
+          price: parseFloat(item.price),
           discount_amount: parseFloat(item.discount_amount) || 0,
           note: item.note,
           product_name: item.product_name,
@@ -443,7 +481,7 @@ export default function CreateOrder() {
                     className="razmer-input"
                     value={item.razmer || ''}
                     onChange={(e) => updateItem(index, 'razmer', e.target.value)}
-                    placeholder="Mas: 3x2"
+                    placeholder="Mas: 1.2x3.3"
                   />
 
                   {/* Kv.m */}
@@ -454,7 +492,7 @@ export default function CreateOrder() {
                   {/* Narx (1 m²) */}
                   <input
                     type="text"
-                    inputMode="numeric"
+                    inputMode="decimal"
                     className="price-input"
                     value={item.price > 0 ? formatNumberWithSpaces(item.price) : (item.price === '' ? '' : '0')}
                     onChange={(e) => {
