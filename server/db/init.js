@@ -1,23 +1,25 @@
 const fs = require('fs');
 const path = require('path');
-const { query } = require('./database');
+const { getQuery } = require('./database');
 const { hashPassword } = require('../utils/crypto');
 
 async function initDb() {
   try {
     console.log('Initializing database schema...');
-    
+
+    const q = getQuery();
+
     // Read and execute schema
     const schemaPath = path.join(__dirname, 'schema.sql');
     const schemaSql = fs.readFileSync(schemaPath, 'utf8');
-    await query.exec(schemaSql);
+    await q.exec(schemaSql);
     console.log('Schema loaded successfully.');
 
     // Seed 1: Default Branch
-    const existingBranch = await query.get('SELECT * FROM branches WHERE name = ?', ['Bosh Showroom']);
+    const existingBranch = await q.get('SELECT * FROM branches WHERE name = ?', ['Bosh Showroom']);
     let branchId = 1;
     if (!existingBranch) {
-      const result = await query.run(
+      const result = await q.run(
         'INSERT INTO branches (name, address, phone) VALUES (?, ?, ?)',
         ['Bosh Showroom', 'Toshkent sh., Chilonzor 1-mavze', '+998 99 123 45 67']
       );
@@ -28,10 +30,10 @@ async function initDb() {
     }
 
     // Seed 2: Default Admin User
-    const existingAdmin = await query.get('SELECT * FROM users WHERE email = ?', ['admin@yecgilam.uz']);
+    const existingAdmin = await q.get('SELECT * FROM users WHERE email = ?', ['admin@yecgilam.uz']);
     if (!existingAdmin) {
       const adminPassHash = hashPassword('admin123');
-      await query.run(
+      await q.run(
         'INSERT INTO users (name, email, password_hash, role, branch_id) VALUES (?, ?, ?, ?, ?)',
         ['Adminstrator', 'admin@yecgilam.uz', adminPassHash, 'admin', branchId]
       );
@@ -39,10 +41,10 @@ async function initDb() {
     }
 
     // Seed 3: Default Seller User
-    const existingSeller = await query.get('SELECT * FROM users WHERE email = ?', ['seller@yecgilam.uz']);
+    const existingSeller = await q.get('SELECT * FROM users WHERE email = ?', ['seller@yecgilam.uz']);
     if (!existingSeller) {
       const sellerPassHash = hashPassword('password123');
-      await query.run(
+      await q.run(
         'INSERT INTO users (name, email, password_hash, role, branch_id) VALUES (?, ?, ?, ?, ?)',
         ['Sotuvchi Test', 'seller@yecgilam.uz', sellerPassHash, 'seller', branchId]
       );
@@ -50,7 +52,7 @@ async function initDb() {
     }
 
     // Seed 4: Default Products
-    const productCount = await query.get('SELECT COUNT(*) as count FROM products');
+    const productCount = await q.get('SELECT COUNT(*) as count FROM products');
     if (productCount.count === 0) {
       const defaultProducts = [
         { name: 'Turkiya Premium', description: 'Yuqori sifatli Turkiya jun gilami, qalinligi 12mm', price: 450000 },
@@ -60,7 +62,7 @@ async function initDb() {
       ];
 
       for (const prod of defaultProducts) {
-        await query.run(
+        await q.run(
           'INSERT INTO products (name, description, price, is_active) VALUES (?, ?, ?, ?)',
           [prod.name, prod.description, prod.price, 1]
         );
@@ -69,7 +71,7 @@ async function initDb() {
     }
 
     // Seed 5: Default Terms & Conditions
-    const existingTerms = await query.get('SELECT * FROM settings WHERE key = ?', ['receipt_terms']);
+    const existingTerms = await q.get('SELECT * FROM settings WHERE key = ?', ['receipt_terms']);
     if (!existingTerms) {
       const defaultTerms = `Texnik jixatlar
 1.1. Aniq o'lchamlar aytib o'tilganidan 1-2sm ga farq qilishi mumkin, buyurtma berayotganda buni inobatga oling!
@@ -86,7 +88,7 @@ Yetkazib berish va kafolat:
 
 Ushbu hujjatga imzo qo'yish yoki buyurtmani tasdiqlash orqali siz yuqoridagi shartlar bilan tanishganingizni va ularga roziligingizni tasdiqlaysiz.`;
 
-      await query.run(
+      await q.run(
         'INSERT INTO settings (key, value) VALUES (?, ?)',
         ['receipt_terms', defaultTerms]
       );

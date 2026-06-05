@@ -1,5 +1,5 @@
 const fs = require('fs');
-const { query } = require('./database');
+const { getQuery } = require('./database');
 
 const SIZES = [
   '300x400', '300x500', '350x500',
@@ -47,7 +47,8 @@ async function importCarpets() {
     let skipped = 0;
 
     for (const carpet of carpetData) {
-      const existing = await query.get(
+      const q = getQuery();
+      const existing = await q.get(
         'SELECT id FROM products WHERE name = ?',
         [carpet.name]
       );
@@ -68,7 +69,7 @@ async function importCarpets() {
 
       const description = `YEC Gilam - ${carpet.categoryName} kolleksiyasi. ${carpet.name}. O'lcham: ${sizeStr}. Yuqori sifatli gilam.`;
 
-      await query.run(
+      await q.run(
         `INSERT INTO products (name, description, price, image_url, is_active)
          VALUES (?, ?, ?, ?, 1)`,
         [

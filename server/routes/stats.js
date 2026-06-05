@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { query } = require('../db/database');
+const { getQuery } = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
 
 // GET /api/stats/dashboard
@@ -8,29 +8,30 @@ const { authenticateToken } = require('../middleware/auth');
 // Seller: returns today-only data for their branch
 router.get('/dashboard', authenticateToken, async (req, res) => {
   try {
+    const q = getQuery();
     const isAdmin = req.user.role === 'admin';
     const branchId = req.user.branch_id;
 
     if (isAdmin) {
       // ── ADMIN: Overall data ──
       // 1. Order counts (Daily, Weekly, Monthly)
-      const dailyCount = await query.get(
+      const dailyCount = await q.get(
         "SELECT COUNT(*) as count FROM orders WHERE order_date = date('now', 'localtime') AND status != 'cancelled'"
       );
-      const weeklyCount = await query.get(
+      const weeklyCount = await q.get(
         "SELECT COUNT(*) as count FROM orders WHERE order_date >= date('now', '-6 days', 'localtime') AND status != 'cancelled'"
       );
-      const monthlyCount = await query.get(
+      const monthlyCount = await q.get(
         "SELECT COUNT(*) as count FROM orders WHERE order_date >= date('now', '-29 days', 'localtime') AND status != 'cancelled'"
       );
 
       // 2. Total sales volume
-      const totalSales = await query.get(
+      const totalSales = await q.get(
         "SELECT SUM(total_amount) as sum FROM orders WHERE status != 'cancelled'"
       );
 
       // 3. Sales by branch showroom
-      const branchSales = await query.all(
+      const branchSales = await q.all(
         `SELECT b.id, b.name as branch_name, COALESCE(SUM(o.total_amount), 0) as sales_sum, COUNT(o.id) as order_count
          FROM branches b
          LEFT JOIN orders o ON o.branch_id = b.id AND o.status != 'cancelled'
@@ -38,7 +39,7 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
       );
 
       // 4. Top selling carpet products
-      const topProducts = await query.all(
+      const topProducts = await q.all(
         `SELECT product_name, SUM(quantity) as total_qty, SUM(quantity * price) as revenue
          FROM order_items oi
          JOIN orders o ON oi.order_id = o.id
@@ -49,7 +50,7 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
       );
 
       // 5. Unpaid orders list
-      const unpaidOrders = await query.all(
+      const unpaidOrders = await q.all(
         `SELECT o.id, o.order_number, o.customer_name, o.customer_phone, o.total_amount, o.paid_amount,
                 (o.total_amount - o.paid_amount) as debt_amount, o.order_date, b.name as branch_name
          FROM orders o
@@ -76,7 +77,7 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
       const branchFilter = branchId ? 'AND o.branch_id = ?' : '';
 
       // 1. Today's order count
-      const todayCount = await query.get(
+      const todayCount = await q.get(
         `SELECT COUNT(*) as count FROM orders o 
          WHERE o.order_date = date('now', 'localtime') 
            AND o.status != 'cancelled' ${branchFilter}`,
@@ -84,7 +85,7 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
       );
 
       // 2. Today's total sales
-      const todaySales = await query.get(
+      const todaySales = await q.get(
         `SELECT COALESCE(SUM(o.total_amount), 0) as sum FROM orders o 
          WHERE o.order_date = date('now', 'localtime') 
            AND o.status != 'cancelled' ${branchFilter}`,
@@ -92,7 +93,7 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
       );
 
       // 3. Today's unpaid debt (sum of remaining amounts for today's orders)
-      const todayDebt = await query.get(
+      const todayDebt = await q.get(
         `SELECT COALESCE(SUM(o.total_amount - o.paid_amount), 0) as sum FROM orders o 
          WHERE o.order_date = date('now', 'localtime') 
            AND o.paid_amount < o.total_amount 
@@ -101,7 +102,7 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
       );
 
       // 4. Today's unpaid orders list (for detail view)
-      const todayUnpaidOrders = await query.all(
+      const todayUnpaidOrders = await q.all(
         `SELECT o.id, o.order_number, o.customer_name, o.customer_phone, 
                 o.total_amount, o.paid_amount,
                 (o.total_amount - o.paid_amount) as debt_amount, o.order_date

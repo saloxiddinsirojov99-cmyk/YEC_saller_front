@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
-const { query } = require('../db/database');
+const { getQuery } = require('../db/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 
 // Multer config for file upload
@@ -29,7 +29,8 @@ const upload = multer({
 
 // Auto-generate product code
 async function generateProductCode() {
-  const last = await query.get('SELECT code FROM products WHERE code != "" ORDER BY id DESC LIMIT 1');
+  const q = getQuery();
+  const last = await q.get('SELECT code FROM products WHERE code != "" ORDER BY id DESC LIMIT 1');
   let num = 1;
   if (last && last.code) {
     const match = last.code.match(/\d+/);
@@ -41,6 +42,7 @@ async function generateProductCode() {
 // GET /api/products
 router.get('/', authenticateToken, async (req, res) => {
   try {
+    const q = getQuery();
     // Exclude image BLOB from list for performance, include image_url if exists
     let sql = 'SELECT id, name, code, description, price, image_url, is_active, created_at FROM products';
     let params = [];
@@ -51,7 +53,7 @@ router.get('/', authenticateToken, async (req, res) => {
     
     sql += ' ORDER BY name ASC';
     
-    const products = await query.all(sql, params);
+    const products = await q.all(sql, params);
     res.json(products);
   } catch (err) {
     console.error('List products error:', err);
@@ -62,6 +64,7 @@ router.get('/', authenticateToken, async (req, res) => {
 // POST /api/products (Admin only) - with image upload
 router.post('/', authenticateToken, requireRole(['admin']), upload.single('image'), async (req, res) => {
   try {
+    const q = getQuery();
     const { name, description, price, is_active } = req.body;
 
     if (!name || price === undefined) {
@@ -77,7 +80,7 @@ router.post('/', authenticateToken, requireRole(['admin']), upload.single('image
       imageUrl = '/uploads/' + req.file.filename;
     }
 
-    const result = await query.run(
+    const result = await q.run(
       'INSERT INTO products (name, code, description, price, image_url, is_active) VALUES (?, ?, ?, ?, ?, ?)',
       [name, code, description || '', price, imageUrl, is_active !== undefined ? is_active : 1]
     );
@@ -100,6 +103,7 @@ router.post('/', authenticateToken, requireRole(['admin']), upload.single('image
 // PUT /api/products/:id (Admin only) - with optional image upload
 router.put('/:id', authenticateToken, requireRole(['admin']), upload.single('image'), async (req, res) => {
   try {
+    const q = getQuery();
     const { name, description, price, is_active } = req.body;
     const { id } = req.params;
 
@@ -108,7 +112,7 @@ router.put('/:id', authenticateToken, requireRole(['admin']), upload.single('ima
     }
 
     // Get existing product
-    const existing = await query.get('SELECT * FROM products WHERE id = ?', [id]);
+    const existing = await q.get('SELECT * FROM products WHERE id = ?', [id]);
     if (!existing) {
       return res.status(404).json({ error: 'Mahsulot topilmadi.' });
     }
@@ -118,7 +122,7 @@ router.put('/:id', authenticateToken, requireRole(['admin']), upload.single('ima
       imageUrl = '/uploads/' + req.file.filename;
     }
 
-    const result = await query.run(
+    const result = await q.run(
       'UPDATE products SET name = ?, description = ?, price = ?, image_url = ?, is_active = ? WHERE id = ?',
       [name, description || '', price, imageUrl, is_active !== undefined ? is_active : existing.is_active, id]
     );
@@ -127,7 +131,7 @@ router.put('/:id', authenticateToken, requireRole(['admin']), upload.single('ima
       return res.status(404).json({ error: 'Mahsulot topilmadi.' });
     }
 
-    const updated = await query.get('SELECT * FROM products WHERE id = ?', [id]);
+    const updated = await q.get('SELECT * FROM products WHERE id = ?', [id]);
     res.json(updated);
   } catch (err) {
     console.error('Update product error:', err);
@@ -138,9 +142,10 @@ router.put('/:id', authenticateToken, requireRole(['admin']), upload.single('ima
 // DELETE /api/products/:id (Admin only)
 router.delete('/:id', authenticateToken, requireRole(['admin']), async (req, res) => {
   try {
+    const q = getQuery();
     const { id } = req.params;
 
-    const result = await query.run('DELETE FROM products WHERE id = ?', [id]);
+    const result = await q.run('DELETE FROM products WHERE id = ?', [id]);
     if (result.changes === 0) {
       return res.status(404).json({ error: 'Mahsulot topilmadi.' });
     }

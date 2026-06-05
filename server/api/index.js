@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { seedDatabase } = require('../db/database');
+const { getQuery, seedDatabase } = require('../db/database');
 
 const authRoutes = require('../routes/auth');
 const branchRoutes = require('../routes/branches');
@@ -44,17 +44,26 @@ app.use(cors({
 // Body parser
 app.use(express.json());
 
-// Verilənlər bazasını əkin (ilk sorğuda default istifadəçilər yaradılır)
+// Database initialisation on first request
+// Vercel serverless'da bu har bir cold start'da ishlaydi
 let seeded = false;
 app.use(async (req, res, next) => {
   if (!seeded) {
     seeded = true;
     try {
+      console.log('Initializing database on first request...');
+      // Faqat query ob'ektini yaratish (lazy init)
+      // PostgreSQL bo'lsa, schema yaratiladi
+      // SQLite bo'lsa, fayl yaratiladi
+      getQuery();
+      
+      // Seed default ma'lumotlarni
       console.log('Seeding database on first request...');
       await seedDatabase();
       console.log('Seed completed on first request.');
     } catch (err) {
-      console.error('Seed error on startup:', err.message);
+      console.error('Database init/seed error on startup:', err.message);
+      // Seeddagi xato server ishlashini to'xtatmasligi kerak
     }
   }
   next();
@@ -70,7 +79,18 @@ app.use('/api/stats', statsRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date() });
+  const hasDB = !!process.env.DATABASE_URL;
+  res.json({ 
+    status: 'OK', 
+    timestamp: new Date(),
+    environment: process.env.VERCEL === '1' ? 'vercel' : 'local',
+    database: hasDB ? 'postgresql' : 'sqlite'
+  });
+});
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: 'So\'ralgan resurs topilmadi.' });
 });
 
 // Global error handler
@@ -79,5 +99,5 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Ichki server xatoligi yuz berdi.' });
 });
 
-// Vercel serverless üçün export
+// Vercel serverless uchun export
 module.exports = app;

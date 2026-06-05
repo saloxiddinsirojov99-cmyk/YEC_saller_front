@@ -17,7 +17,7 @@ const hasDatabaseUrl = !!process.env.DATABASE_URL;
 const usePostgres = hasDatabaseUrl;
 
 // ============================================================
-// CRITICAL: Vercel'da DATABASE_URL o'rnatilmasa, ma'lumotlar 
+// CRITICAL: Vercel'da DATABASE_URL o'rnatilmasa, ma'lumotlar
 //           5 daqiqada yo'qoladi! Quyidagi log'ni tekshiring.
 // ============================================================
 if (isVercel && !hasDatabaseUrl) {
@@ -31,19 +31,26 @@ if (isVercel && !hasDatabaseUrl) {
   console.error('========================================================');
 }
 
-let query;
+// ============================================================
+// LAZY INIT: Pool/DB faqat kerak bo'lganda yaratiladi
+// ============================================================
+let query = null;
 let pool = null;
+let db = null;
 
-if (usePostgres) {
-  // ========================================
-  // POSTGRESQL (Vercel / Production)
-  // ========================================
+/**
+ * PostgreSQL ulanishini yaratadi.
+ * Lazy init – faqat birinchi so'rovda ishga tushadi.
+ */
+function createPostgresPool() {
+  if (pool) return pool;
+
   const { Pool } = require('pg');
 
   pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: {
-      rejectUnauthorized: false
+      rejectUnauthorized: false,
     },
     max: 5,
     idleTimeoutMillis: 30000,
@@ -54,63 +61,26 @@ if (usePostgres) {
     console.error('PostgreSQL pool error:', err.message);
   });
 
-  // Test connection immediately
-  pool.query('SELECT NOW()', (err) => {
-    if (err) {
-      console.error('PostgreSQL CONNECTION FAILED:', err.message);
-    } else {
-      console.log('PostgreSQL connected successfully');
-    }
-  });
+  return pool;
+}
 
-  // SQLite → PostgreSQL transform
-  function transformPgSql(sql) {
-    let result = sql.replace(/date\('now',\s*'localtime'\)/gi, "CURRENT_DATE");
-    result = result.replace(/date\('now'\)/gi, "CURRENT_DATE");
-    result = result.replace(/datetime\('now'\)/gi, "NOW()");
-    result = result.replace(/julianday\(/gi, "EXTRACT(JULIAN FROM ");
-    return result;
+/**
+ * SQLite ulanishini yaratadi.
+ * Lazy init – faqat birinchi so'rovda ishga tushadi.
+ */
+function createSqliteConnection() {
+  if (db) return db;
+
+  // sqlite3 ni dinamik yuklash – Vercel'da import qilinmaydi
+  let sqlite3;
+  try {
+    sqlite3 = require('sqlite3').verbose();
+  } catch (err) {
+    console.error('sqlite3 yuklanmadi:', err.message);
+    console.error('Bu xato faqat Vercel\'da sodir bo\'lsa, muammo yo\'q.');
+    throw err;
   }
 
-  function convertPlaceholders(sql) {
-    let index = 0;
-    return sql.replace(/\?/g, () => `$${++index}`);
-  }
-
-  query = {
-    get(sql, params = []) {
-      sql = transformPgSql(sql);
-      const pgSql = convertPlaceholders(sql);
-      return pool.query(pgSql, params).then(res => res.rows[0] || null);
-    },
-    all(sql, params = []) {
-      sql = transformPgSql(sql);
-      const pgSql = convertPlaceholders(sql);
-      return pool.query(pgSql, params).then(res => res.rows);
-    },
-    run(sql, params = []) {
-      sql = transformPgSql(sql);
-      const pgSql = convertPlaceholders(sql);
-      const finalSql = pgSql.trim().toUpperCase().startsWith('INSERT')
-        ? pgSql + ' RETURNING id'
-        : pgSql;
-      return pool.query(finalSql, params).then(res => ({
-        id: res.rows[0]?.id || res.rowCount,
-        changes: res.rowCount
-      }));
-    },
-    exec(sql) {
-      sql = transformPgSql(sql);
-      return pool.query(sql).then(res => ({ changes: res.rowCount }));
-    },
-    _pool: pool
-  };
-
-} else if (!isVercel) {
-  // ========================================
-  // SQLITE (Local Development ONLY!)
-  // ========================================
-  const sqlite3 = require('sqlite3').verbose();
   const dbPath = path.join(__dirname, 'yec_gilam.db');
 
   if (!fs.existsSync(dbPath)) {
@@ -124,7 +94,7 @@ if (usePostgres) {
     }
   }
 
-  const db = new sqlite3.Database(dbPath, (err) => {
+  db = new sqlite3.Database(dbPath, (err) => {
     if (err) {
       console.error('SQLite connection error:', err.message);
     } else {
@@ -133,55 +103,137 @@ if (usePostgres) {
     }
   });
 
-  query = {
-    get(sql, params = []) {
-      return new Promise((resolve, reject) => {
-        db.get(sql, params, (err, row) => {
-          if (err) reject(err);
-          else resolve(row);
-        });
-      });
-    },
-    all(sql, params = []) {
-      return new Promise((resolve, reject) => {
-        db.all(sql, params, (err, rows) => {
-          if (err) reject(err);
-          else resolve(rows);
-        });
-      });
-    },
-    run(sql, params = []) {
-      return new Promise((resolve, reject) => {
-        db.run(sql, params, function (err) {
-          if (err) reject(err);
-          else resolve({ id: this.lastID, changes: this.changes });
-        });
-      });
-    },
-    exec(sql) {
-      return new Promise((resolve, reject) => {
-        db.exec(sql, (err) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
-    }
-  };
+  return db;
+}
 
-} else {
-  // ========================================
-  // VERCEL WITHOUT DATABASE_URL - ERROR
-  // ========================================
-  // Return a stub query object that shows clear error
-  const errorMsg = 'DATABASE_URL environment variable is not set! Vercel requires PostgreSQL.';
-  console.error(errorMsg);
-  
-  query = {
-    get() { return Promise.reject(new Error(errorMsg)); },
-    all() { return Promise.reject(new Error(errorMsg)); },
-    run() { return Promise.reject(new Error(errorMsg)); },
-    exec() { return Promise.reject(new Error(errorMsg)); }
-  };
+/**
+ * Query object yaratadi (lazy).
+ */
+function getQuery() {
+  if (query) return query;
+
+  if (usePostgres) {
+    // ========================================
+    // POSTGRESQL (Vercel / Production)
+    // ========================================
+    const pgPool = createPostgresPool();
+
+    // SQLite → PostgreSQL transform
+    function transformPgSql(sql) {
+      let result = sql.replace(/date\('now',\s*'localtime'\)/gi, 'CURRENT_DATE');
+      result = result.replace(/date\('now'\)/gi, 'CURRENT_DATE');
+      result = result.replace(/datetime\('now'\)/gi, 'NOW()');
+      result = result.replace(/julianday\(/gi, 'EXTRACT(JULIAN FROM ');
+      return result;
+    }
+
+    function convertPlaceholders(sql) {
+      let index = 0;
+      return sql.replace(/\?/g, () => `$${++index}`);
+    }
+
+    query = {
+      get(sql, params = []) {
+        sql = transformPgSql(sql);
+        const pgSql = convertPlaceholders(sql);
+        return pgPool.query(pgSql, params).then((res) => res.rows[0] || null);
+      },
+      all(sql, params = []) {
+        sql = transformPgSql(sql);
+        const pgSql = convertPlaceholders(sql);
+        return pgPool.query(pgSql, params).then((res) => res.rows);
+      },
+      run(sql, params = []) {
+        sql = transformPgSql(sql);
+        const pgSql = convertPlaceholders(sql);
+        const finalSql = pgSql.trim().toUpperCase().startsWith('INSERT')
+          ? pgSql + ' RETURNING id'
+          : pgSql;
+        return pgPool.query(finalSql, params).then((res) => ({
+          id: res.rows[0]?.id || res.rowCount,
+          changes: res.rowCount,
+        }));
+      },
+      exec(sql) {
+        sql = transformPgSql(sql);
+        return pgPool.query(sql).then((res) => ({ changes: res.rowCount }));
+      },
+      getPool() {
+        return pgPool;
+      },
+    };
+  } else if (!isVercel) {
+    // ========================================
+    // SQLITE (Local Development ONLY!)
+    // ========================================
+    const sqliteDb = createSqliteConnection();
+
+    query = {
+      get(sql, params = []) {
+        return new Promise((resolve, reject) => {
+          sqliteDb.get(sql, params, (err, row) => {
+            if (err) reject(err);
+            else resolve(row);
+          });
+        });
+      },
+      all(sql, params = []) {
+        return new Promise((resolve, reject) => {
+          sqliteDb.all(sql, params, (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows);
+          });
+        });
+      },
+      run(sql, params = []) {
+        return new Promise((resolve, reject) => {
+          sqliteDb.run(sql, params, function (err) {
+            if (err) reject(err);
+            else resolve({ id: this.lastID, changes: this.changes });
+          });
+        });
+      },
+      exec(sql) {
+        return new Promise((resolve, reject) => {
+          sqliteDb.exec(sql, (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+      },
+      getPool() {
+        return null;
+      },
+    };
+  } else {
+    // ========================================
+    // VERCEL WITHOUT DATABASE_URL - ERROR
+    // ========================================
+    // Return a stub query object that shows clear error
+    const errorMsg =
+      'DATABASE_URL environment variable is not set! Vercel requires PostgreSQL.';
+    console.error(errorMsg);
+
+    query = {
+      get() {
+        return Promise.reject(new Error(errorMsg));
+      },
+      all() {
+        return Promise.reject(new Error(errorMsg));
+      },
+      run() {
+        return Promise.reject(new Error(errorMsg));
+      },
+      exec() {
+        return Promise.reject(new Error(errorMsg));
+      },
+      getPool() {
+        return null;
+      },
+    };
+  }
+
+  return query;
 }
 
 // ============================================================
@@ -192,10 +244,12 @@ if (usePostgres) {
 // Lekin PostgreSQL da ma'lumotlar saqlanib qoladi.
 // ============================================================
 async function seedDatabase() {
+  const q = getQuery();
+
   // PostgreSQL schema creation
   if (usePostgres) {
     try {
-      await ensurePostgresSchema();
+      await ensurePostgresSchema(q);
     } catch (err) {
       console.error('Schema creation error:', err.message);
       return; // Don't proceed if schema creation failed
@@ -210,9 +264,12 @@ async function seedDatabase() {
 
   // 1. Default Branch
   try {
-    const existingBranch = await query.get('SELECT * FROM branches WHERE name = ?', ['Bosh Showroom']);
+    const existingBranch = await q.get(
+      'SELECT * FROM branches WHERE name = ?',
+      ['Bosh Showroom']
+    );
     if (!existingBranch) {
-      await query.run(
+      await q.run(
         'INSERT INTO branches (name, address, phone) VALUES (?, ?, ?)',
         ['Bosh Showroom', 'Toshkent sh., Chilonzor 1-mavze', '+998 99 123 45 67']
       );
@@ -224,11 +281,14 @@ async function seedDatabase() {
 
   // 2. Default Admin
   try {
-    const existingAdmin = await query.get('SELECT * FROM users WHERE email = ?', ['admin@yecgilam.uz']);
+    const existingAdmin = await q.get(
+      'SELECT * FROM users WHERE email = ?',
+      ['admin@yecgilam.uz']
+    );
     if (!existingAdmin) {
       const { hashPassword } = require('../utils/crypto');
       const adminPassHash = hashPassword('admin123');
-      await query.run(
+      await q.run(
         'INSERT INTO users (name, email, password_hash, role, branch_id) VALUES (?, ?, ?, ?, ?)',
         ['Administrator', 'admin@yecgilam.uz', adminPassHash, 'admin', 1]
       );
@@ -240,11 +300,14 @@ async function seedDatabase() {
 
   // 3. Default Seller
   try {
-    const existingSeller = await query.get('SELECT * FROM users WHERE email = ?', ['seller@yecgilam.uz']);
+    const existingSeller = await q.get(
+      'SELECT * FROM users WHERE email = ?',
+      ['seller@yecgilam.uz']
+    );
     if (!existingSeller) {
       const { hashPassword } = require('../utils/crypto');
       const sellerPassHash = hashPassword('password123');
-      await query.run(
+      await q.run(
         'INSERT INTO users (name, email, password_hash, role, branch_id) VALUES (?, ?, ?, ?, ?)',
         ['Sotuvchi Test', 'seller@yecgilam.uz', sellerPassHash, 'seller', 1]
       );
@@ -256,16 +319,32 @@ async function seedDatabase() {
 
   // 4. Default Products
   try {
-    const productCount = await query.get('SELECT COUNT(*) as count FROM products');
+    const productCount = await q.get('SELECT COUNT(*) as count FROM products');
     if (parseInt(productCount.count) === 0) {
       const defaultProducts = [
-        { name: 'Turkiya Premium', description: 'Yuqori sifatli Turkiya jun gilami, qalinligi 12mm', price: 450000 },
-        { name: 'Eron Ipak Gilam', description: 'Nafis naqshli, qo\'lda to\'qilgan Eron ipak gilami', price: 1200000 },
-        { name: 'O\'zbekiston Baxmal', description: 'Milliy naqshli, yumshoq va chidamli baxmal gilam', price: 350000 },
-        { name: 'Buxoro Shoyi Gilam', description: 'Klassik Buxoro nusxa shoyi gilam', price: 800000 }
+        {
+          name: 'Turkiya Premium',
+          description: "Yuqori sifatli Turkiya jun gilami, qalinligi 12mm",
+          price: 450000,
+        },
+        {
+          name: 'Eron Ipak Gilam',
+          description: "Nafis naqshli, qo'lda to'qilgan Eron ipak gilami",
+          price: 1200000,
+        },
+        {
+          name: "O'zbekiston Baxmal",
+          description: 'Milliy naqshli, yumshoq va chidamli baxmal gilam',
+          price: 350000,
+        },
+        {
+          name: 'Buxoro Shoyi Gilam',
+          description: 'Klassik Buxoro nusxa shoyi gilam',
+          price: 800000,
+        },
       ];
       for (const prod of defaultProducts) {
-        await query.run(
+        await q.run(
           'INSERT INTO products (name, description, price, is_active) VALUES (?, ?, ?, ?)',
           [prod.name, prod.description, prod.price, 1]
         );
@@ -280,18 +359,24 @@ async function seedDatabase() {
 // ============================================================
 // PostgreSQL Schema Creation (auto-migrate)
 // ============================================================
-async function ensurePostgresSchema() {
+async function ensurePostgresSchema(q) {
+  const pgPool = q.getPool();
+  if (!pgPool) {
+    console.error('No PostgreSQL pool available for schema creation');
+    return;
+  }
+
   try {
-    const tableCheck = await query._pool.query(
+    const tableCheck = await pgPool.query(
       `SELECT EXISTS (
-        SELECT FROM information_schema.tables 
+        SELECT FROM information_schema.tables
         WHERE table_name = 'branches'
       )`
     );
-    
+
     if (!tableCheck.rows[0].exists) {
       console.log('Creating PostgreSQL tables...');
-      await query._pool.query(`
+      await pgPool.query(`
         CREATE TABLE IF NOT EXISTS branches (
           id SERIAL PRIMARY KEY,
           name TEXT NOT NULL,
@@ -364,6 +449,6 @@ async function ensurePostgresSchema() {
 }
 
 module.exports = {
-  query,
-  seedDatabase
+  getQuery,
+  seedDatabase,
 };

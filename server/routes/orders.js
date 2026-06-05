@@ -1,11 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const { query } = require('../db/database');
+const { getQuery } = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
 
 // GET /api/orders - List orders with filtering
 router.get('/', authenticateToken, async (req, res) => {
   try {
+    const q = getQuery();
     const { search, branch_id, status, unpaid, seller_id, date_from, date_to, delivery_from, delivery_to, phone, customer } = req.query;
     
     let sql = `
@@ -79,7 +80,7 @@ router.get('/', authenticateToken, async (req, res) => {
 
     sql += ' ORDER BY o.id DESC';
 
-    const orders = await query.all(sql, params);
+    const orders = await q.all(sql, params);
     res.json(orders);
   } catch (err) {
     console.error('List orders error:', err);
@@ -90,6 +91,7 @@ router.get('/', authenticateToken, async (req, res) => {
 // GET /api/orders/:id - Get detailed order with items
 router.get('/:id', authenticateToken, async (req, res) => {
   try {
+    const q = getQuery();
     const { id } = req.params;
 
     let orderSql = `
@@ -99,7 +101,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
       LEFT JOIN users u ON o.seller_id = u.id
       WHERE o.id = ?
     `;
-    const order = await query.get(orderSql, [id]);
+    const order = await q.get(orderSql, [id]);
 
     if (!order) {
       return res.status(404).json({ error: 'Buyurtma topilmadi.' });
@@ -109,7 +111,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Ushbu buyurtmani ko\'rishga huquqingiz yo\'q.' });
     }
 
-    const items = await query.all(
+    const items = await q.all(
       'SELECT * FROM order_items WHERE order_id = ? ORDER BY id ASC',
       [id]
     );
@@ -125,6 +127,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // POST /api/orders - Create new order
 router.post('/', authenticateToken, async (req, res) => {
   try {
+    const q = getQuery();
     const {
       customer_name,
       customer_phone,
@@ -156,7 +159,7 @@ router.post('/', authenticateToken, async (req, res) => {
     }
 
     // Generate order number
-    const maxRow = await query.get('SELECT MAX(CAST(order_number AS INTEGER)) as max_num FROM orders');
+    const maxRow = await q.get('SELECT MAX(CAST(order_number AS INTEGER)) as max_num FROM orders');
     let nextNum = 1;
     if (maxRow && maxRow.max_num !== null && !isNaN(maxRow.max_num)) {
       nextNum = maxRow.max_num + 1;
@@ -164,7 +167,7 @@ router.post('/', authenticateToken, async (req, res) => {
     const finalOrderNumber = String(nextNum).padStart(3, '0');
 
     // Insert Order (no explicit transaction - simpler and more reliable with SQLite)
-    const orderResult = await query.run(
+    const orderResult = await q.run(
       `INSERT INTO orders (
         order_number, branch_id, seller_id, customer_name, customer_phone,
         customer_phone2, customer_address, order_date, delivery_date, total_amount, paid_amount, note, status
@@ -191,7 +194,7 @@ router.post('/', authenticateToken, async (req, res) => {
     // Insert items
     for (const item of items) {
       const itemQty = item.width && item.height ? item.width * item.height : item.quantity;
-      await query.run(
+      await q.run(
         `INSERT INTO order_items (order_id, product_id, product_name, product_code, width, height, quantity, price, discount_percent, note)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
@@ -210,7 +213,7 @@ router.post('/', authenticateToken, async (req, res) => {
     }
 
     // Fetch full order for receipt
-    const fullOrder = await query.get(
+    const fullOrder = await q.get(
       `SELECT o.*, b.name as branch_name, u.name as seller_name 
        FROM orders o
        LEFT JOIN branches b ON o.branch_id = b.id
@@ -219,7 +222,7 @@ router.post('/', authenticateToken, async (req, res) => {
       [orderId]
     );
 
-    const orderItems = await query.all(
+    const orderItems = await q.all(
       'SELECT * FROM order_items WHERE order_id = ? ORDER BY id ASC',
       [orderId]
     );
@@ -240,10 +243,11 @@ router.post('/', authenticateToken, async (req, res) => {
 // PUT /api/orders/:id - Update order (status, paid_amount, items, branch_id, etc.)
 router.put('/:id', authenticateToken, async (req, res) => {
   try {
+    const q = getQuery();
     const { id } = req.params;
     const { status, paid_amount, items, customer_name, customer_phone, customer_phone2, customer_address, delivery_date, note, branch_id } = req.body;
 
-    const order = await query.get('SELECT * FROM orders WHERE id = ?', [id]);
+    const order = await q.get('SELECT * FROM orders WHERE id = ?', [id]);
     if (!order) {
       return res.status(404).json({ error: 'Buyurtma topilmadi.' });
     }
@@ -308,7 +312,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
 
     if (fields.length > 0) {
       params.push(id);
-      await query.run(`UPDATE orders SET ${fields.join(', ')} WHERE id = ?`, params);
+      await q.run(`UPDATE orders SET ${fields.join(', ')} WHERE id = ?`, params);
     }
 
     // Update items if provided
@@ -320,10 +324,10 @@ router.put('/:id', authenticateToken, async (req, res) => {
       }
 
       // Delete old items and insert new ones
-      await query.run('DELETE FROM order_items WHERE order_id = ?', [id]);
+      await q.run('DELETE FROM order_items WHERE order_id = ?', [id]);
       for (const item of items) {
         const itemQty = item.width && item.height ? item.width * item.height : (item.quantity || 0);
-        await query.run(
+        await q.run(
           `INSERT INTO order_items (order_id, product_id, product_name, product_code, width, height, quantity, price, discount_percent, note)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
@@ -341,11 +345,11 @@ router.put('/:id', authenticateToken, async (req, res) => {
         );
       }
 
-      await query.run('UPDATE orders SET total_amount = ? WHERE id = ?', [total_amount, id]);
+      await q.run('UPDATE orders SET total_amount = ? WHERE id = ?', [total_amount, id]);
     }
 
     // Fetch updated order
-    const updatedOrder = await query.get(
+    const updatedOrder = await q.get(
       `SELECT o.*, b.name as branch_name, u.name as seller_name 
        FROM orders o
        LEFT JOIN branches b ON o.branch_id = b.id
@@ -354,7 +358,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
       [id]
     );
 
-    const orderItems = await query.all(
+    const orderItems = await q.all(
       'SELECT * FROM order_items WHERE order_id = ? ORDER BY id ASC',
       [id]
     );
@@ -372,9 +376,10 @@ router.put('/:id', authenticateToken, async (req, res) => {
 // DELETE /api/orders/:id - Delete order (Admin only)
 router.delete('/:id', authenticateToken, async (req, res) => {
   try {
+    const q = getQuery();
     const { id } = req.params;
 
-    const order = await query.get('SELECT * FROM orders WHERE id = ?', [id]);
+    const order = await q.get('SELECT * FROM orders WHERE id = ?', [id]);
     if (!order) {
       return res.status(404).json({ error: 'Buyurtma topilmadi.' });
     }
@@ -385,8 +390,8 @@ router.delete('/:id', authenticateToken, async (req, res) => {
     }
 
     // Delete order items first
-    await query.run('DELETE FROM order_items WHERE order_id = ?', [id]);
-    await query.run('DELETE FROM orders WHERE id = ?', [id]);
+    await q.run('DELETE FROM order_items WHERE order_id = ?', [id]);
+    await q.run('DELETE FROM orders WHERE id = ?', [id]);
 
     res.json({ success: true, message: 'Buyurtma o\'chirildi.' });
   } catch (err) {
