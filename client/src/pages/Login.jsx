@@ -128,7 +128,7 @@ export default function Login() {
           {/* Logo container */}
           <Box
             component="img"
-            src="/logo.svg"
+            src="/logo.png"
             alt="YEC Gilam Logo"
             onError={(e) => {
               // Fallback if logo doesn't exist yet
@@ -313,31 +313,6 @@ export default function Login() {
               )}
             </Button>
 
-            <Typography
-              variant="body2"
-              sx={{
-                mt: 2,
-                textAlign: 'center',
-                color: 'rgba(255, 255, 255, 0.4)',
-              }}
-            >
-              Hisobingiz yo'qmi?{' '}
-              <Button
-                component={RouterLink}
-                to="/register"
-                sx={{
-                  color: '#3b82f6',
-                  textTransform: 'none',
-                  fontWeight: 600,
-                  p: 0,
-                  minWidth: 'auto',
-                  ml: 0.5,
-                  '&:hover': { textDecoration: 'underline' },
-                }}
-              >
-                Ro'yxatdan o'tish
-              </Button>
-            </Typography>
           </Box>
         </Paper>
       </Container>

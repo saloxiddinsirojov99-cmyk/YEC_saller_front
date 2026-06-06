@@ -5,9 +5,10 @@
   "devCommand": "npm run dev",
   "installCommand": "npm install",
   "framework": "vite",
+  "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/((?!api/).*)",
+      "source": "/((?!assets/|.*\\..*|api/).*)",
       "destination": "/index.html"
     }
   ]

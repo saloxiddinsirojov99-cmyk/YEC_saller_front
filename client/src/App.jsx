@@ -2,7 +2,6 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
-import Register from './pages/Register';
 import SellerDashboard from './pages/seller/Dashboard';
 import CreateOrder from './pages/seller/CreateOrder';
 import OrderList from './pages/seller/OrderList';
@@ -41,7 +40,6 @@ function App() {
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
           
           {/* Sotuvchi Routes */}
           <Route

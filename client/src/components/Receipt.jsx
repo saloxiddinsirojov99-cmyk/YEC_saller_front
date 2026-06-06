@@ -124,7 +124,7 @@ export default function Receipt({ order, onClose }) {
         <div className="receipt-content">
           {/* Logo - centered at top */}
           <div className="receipt-logo-section">
-            <img src="/logo.svg" alt="YEC GILAM" className="receipt-logo" />
+            <img src="/logo.png" alt="YEC GILAM" className="receipt-logo" />
           </div>
 
           {/* Company info - centered below logo */}
