@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
-const { query } = require('../db/database');
+const { getQuery } = require('../db/database');
 const { verifyPassword } = require('../utils/crypto');
 const { authenticateToken, JWT_SECRET } = require('../middleware/auth');
 
@@ -14,8 +14,10 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Email va parol kiritilishi shart.' });
     }
 
+    const q = getQuery();
+
     // Find user
-    const user = await query.get(
+    const user = await q.get(
       `SELECT u.*, b.name as branch_name 
        FROM users u 
        LEFT JOIN branches b ON u.branch_id = b.id 
@@ -72,7 +74,9 @@ router.post('/logout', authenticateToken, async (req, res) => {
 // GET /api/auth/me
 router.get('/me', authenticateToken, async (req, res) => {
   try {
-    const user = await query.get(
+    const q = getQuery();
+
+    const user = await q.get(
       `SELECT u.id, u.name, u.email, u.role, u.branch_id, b.name as branch_name 
        FROM users u 
        LEFT JOIN branches b ON u.branch_id = b.id 

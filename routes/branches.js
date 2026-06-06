@@ -1,12 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const { query } = require('../db/database');
+const { getQuery } = require('../db/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 
 // GET /api/branches (All authenticated users can list branches for dropdowns)
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const branches = await query.all('SELECT * FROM branches ORDER BY name ASC');
+    const q = getQuery();
+    const branches = await q.all('SELECT * FROM branches ORDER BY name ASC');
     res.json(branches);
   } catch (err) {
     console.error('List branches error:', err);
@@ -18,11 +19,13 @@ router.get('/', authenticateToken, async (req, res) => {
 router.post('/', authenticateToken, requireRole(['admin']), async (req, res) => {
   try {
     const { name, address, phone } = req.body;
+    const q = getQuery();
+
     if (!name) {
       return res.status(400).json({ error: 'Filial nomi kiritilishi shart.' });
     }
 
-    const result = await query.run(
+    const result = await q.run(
       'INSERT INTO branches (name, address, phone) VALUES (?, ?, ?)',
       [name, address, phone]
     );
@@ -44,12 +47,13 @@ router.put('/:id', authenticateToken, requireRole(['admin']), async (req, res) =
   try {
     const { name, address, phone } = req.body;
     const { id } = req.params;
+    const q = getQuery();
 
     if (!name) {
       return res.status(400).json({ error: 'Filial nomi kiritilishi shart.' });
     }
 
-    const result = await query.run(
+    const result = await q.run(
       'UPDATE branches SET name = ?, address = ?, phone = ? WHERE id = ?',
       [name, address, phone, id]
     );
@@ -69,8 +73,9 @@ router.put('/:id', authenticateToken, requireRole(['admin']), async (req, res) =
 router.delete('/:id', authenticateToken, requireRole(['admin']), async (req, res) => {
   try {
     const { id } = req.params;
+    const q = getQuery();
 
-    const result = await query.run('DELETE FROM branches WHERE id = ?', [id]);
+    const result = await q.run('DELETE FROM branches WHERE id = ?', [id]);
     if (result.changes === 0) {
       return res.status(404).json({ error: 'Filial topilmadi.' });
     }

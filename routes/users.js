@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { query } = require('../db/database');
+const { getQuery } = require('../db/database');
 const { hashPassword } = require('../utils/crypto');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { sendUserNotificationEmail } = require('../utils/email');
@@ -11,7 +11,8 @@ router.use(authenticateToken, requireRole(['admin']));
 // GET /api/users - List all users with branch details
 router.get('/', async (req, res) => {
   try {
-    const users = await query.all(
+    const q = getQuery();
+    const users = await q.all(
       `SELECT u.id, u.name, u.email, u.role, u.branch_id, u.created_at, b.name as branch_name 
        FROM users u
        LEFT JOIN branches b ON u.branch_id = b.id
@@ -28,6 +29,7 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const { name, email, password, role, branch_id } = req.body;
+    const q = getQuery();
 
     if (!name || !email || !password || !role) {
       return res.status(400).json({ error: 'Ism, email, parol va rol kiritilishi shart.' });
@@ -38,13 +40,13 @@ router.post('/', async (req, res) => {
     }
 
     // Check if email unique
-    const existingUser = await query.get('SELECT id FROM users WHERE email = ?', [email.trim().toLowerCase()]);
+    const existingUser = await q.get('SELECT id FROM users WHERE email = ?', [email.trim().toLowerCase()]);
     if (existingUser) {
       return res.status(400).json({ error: 'Ushbu email li foydalanuvchi allaqachon mavjud.' });
     }
 
     const passwordHash = hashPassword(password);
-    const result = await query.run(
+    const result = await q.run(
       'INSERT INTO users (name, email, password_hash, role, branch_id) VALUES (?, ?, ?, ?, ?)',
       [name, email.trim().toLowerCase(), passwordHash, role, branch_id || null]
     );
@@ -77,19 +79,20 @@ router.put('/:id', async (req, res) => {
   try {
     const { name, email, password, role, branch_id } = req.body;
     const { id } = req.params;
+    const q = getQuery();
 
     if (!name || !email || !role) {
       return res.status(400).json({ error: 'Ism, email va rol kiritilishi shart.' });
     }
 
     // Get old user data for comparison
-    const oldUser = await query.get('SELECT * FROM users WHERE id = ?', [id]);
+    const oldUser = await q.get('SELECT * FROM users WHERE id = ?', [id]);
     if (!oldUser) {
       return res.status(404).json({ error: 'Foydalanuvchi topilmadi.' });
     }
 
     // Check if email unique to another user
-    const existingUser = await query.get('SELECT id FROM users WHERE email = ? AND id != ?', [email.trim().toLowerCase(), id]);
+    const existingUser = await q.get('SELECT id FROM users WHERE email = ? AND id != ?', [email.trim().toLowerCase(), id]);
     if (existingUser) {
       return res.status(400).json({ error: 'Ushbu email boshqa foydalanuvchiga tegishli.' });
     }
@@ -105,7 +108,7 @@ router.put('/:id', async (req, res) => {
     
     params.push(id);
 
-    const result = await query.run(
+    const result = await q.run(
       `UPDATE users 
        SET name = ?, email = ?, role = ?, branch_id = ? ${passwordSql} 
        WHERE id = ?`,
@@ -152,13 +155,14 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const q = getQuery();
 
     // Prevent admin from deleting themselves
     if (parseInt(id) === req.user.id) {
       return res.status(400).json({ error: 'O\'zingizning profilingizni o\'chira olmaysiz.' });
     }
 
-    const result = await query.run('DELETE FROM users WHERE id = ?', [id]);
+    const result = await q.run('DELETE FROM users WHERE id = ?', [id]);
     if (result.changes === 0) {
       return res.status(404).json({ error: 'Foydalanuvchi topilmadi.' });
     }
