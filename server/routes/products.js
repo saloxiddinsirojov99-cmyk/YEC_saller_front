@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
-const { getQuery } = require('../db/database');
+const prisma = require('../lib/prisma');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 
 // Multer config for file upload
@@ -29,8 +29,13 @@ const upload = multer({
 
 // Auto-generate product code
 async function generateProductCode() {
-  const q = getQuery();
-  const last = await q.get('SELECT code FROM products WHERE code != "" ORDER BY id DESC LIMIT 1');
+  const last = await prisma.product.findFirst({
+    where: {
+      code: { not: "" }
+    },
+    orderBy: { id: 'desc' },
+    select: { code: true }
+  });
   let num = 1;
   if (last && last.code) {
     const match = last.code.match(/\d+/);
@@ -42,33 +47,34 @@ async function generateProductCode() {
 // GET /api/products
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const q = getQuery();
-    // Exclude image BLOB from list for performance, include image_url if exists
-    let sql = 'SELECT id, name, code, description, price, image_url, is_active, created_at FROM products';
-    let params = [];
-
+    const where = {};
     if (req.user.role !== 'admin') {
-      sql += ' WHERE is_active = 1';
+      where.is_active = 1;
     }
     
-    sql += ' ORDER BY name ASC';
-    
-    const products = await q.all(sql, params);
-    res.json(products);
+    const products = await prisma.product.findMany({
+      where,
+      orderBy: { name: 'asc' }
+    });
+
+    res.json({
+      success: true,
+      data: products,
+      message: 'Mahsulotlar ro\'yxati muvaffaqiyatli yuklandi.'
+    });
   } catch (err) {
     console.error('List products error:', err);
-    res.status(500).json({ error: 'Tizim xatoligi yuz berdi.' });
+    res.status(500).json({ success: false, message: 'Tizim xatoligi yuz berdi.' });
   }
 });
 
 // POST /api/products (Admin only) - with image upload
 router.post('/', authenticateToken, requireRole(['admin']), upload.single('image'), async (req, res) => {
   try {
-    const q = getQuery();
     const { name, description, price, is_active } = req.body;
 
     if (!name || price === undefined) {
-      return res.status(400).json({ error: 'Mahsulot nomi va narxi kiritilishi shart.' });
+      return res.status(400).json({ success: false, message: 'Mahsulot nomi va narxi kiritilishi shart.' });
     }
 
     // Auto-generate code
@@ -80,41 +86,45 @@ router.post('/', authenticateToken, requireRole(['admin']), upload.single('image
       imageUrl = '/uploads/' + req.file.filename;
     }
 
-    const result = await q.run(
-      'INSERT INTO products (name, code, description, price, image_url, is_active) VALUES (?, ?, ?, ?, ?, ?)',
-      [name, code, description || '', price, imageUrl, is_active !== undefined ? is_active : 1]
-    );
+    const product = await prisma.product.create({
+      data: {
+        name: name.trim(),
+        code,
+        description: description ? description.trim() : null,
+        price: parseFloat(price),
+        image_url: imageUrl || null,
+        is_active: is_active !== undefined ? parseInt(is_active) : 1
+      }
+    });
 
     res.status(201).json({
-      id: result.id,
-      name,
-      code,
-      description,
-      price,
-      image_url: imageUrl,
-      is_active: is_active !== undefined ? is_active : 1
+      success: true,
+      data: product,
+      message: 'Mahsulot muvaffaqiyatli yaratildi.'
     });
   } catch (err) {
     console.error('Create product error:', err);
-    res.status(500).json({ error: 'Tizim xatoligi yuz berdi.' });
+    res.status(500).json({ success: false, message: 'Tizim xatoligi yuz berdi.' });
   }
 });
 
 // PUT /api/products/:id (Admin only) - with optional image upload
 router.put('/:id', authenticateToken, requireRole(['admin']), upload.single('image'), async (req, res) => {
   try {
-    const q = getQuery();
     const { name, description, price, is_active } = req.body;
     const { id } = req.params;
 
     if (!name || price === undefined) {
-      return res.status(400).json({ error: 'Mahsulot nomi va narxi kiritilishi shart.' });
+      return res.status(400).json({ success: false, message: 'Mahsulot nomi va narxi kiritilishi shart.' });
     }
 
     // Get existing product
-    const existing = await q.get('SELECT * FROM products WHERE id = ?', [id]);
+    const existing = await prisma.product.findUnique({
+      where: { id: parseInt(id) }
+    });
+    
     if (!existing) {
-      return res.status(404).json({ error: 'Mahsulot topilmadi.' });
+      return res.status(404).json({ success: false, message: 'Mahsulot topilmadi.' });
     }
 
     let imageUrl = existing.image_url || '';
@@ -122,38 +132,44 @@ router.put('/:id', authenticateToken, requireRole(['admin']), upload.single('ima
       imageUrl = '/uploads/' + req.file.filename;
     }
 
-    const result = await q.run(
-      'UPDATE products SET name = ?, description = ?, price = ?, image_url = ?, is_active = ? WHERE id = ?',
-      [name, description || '', price, imageUrl, is_active !== undefined ? is_active : existing.is_active, id]
-    );
+    const updated = await prisma.product.update({
+      where: { id: parseInt(id) },
+      data: {
+        name: name.trim(),
+        description: description ? description.trim() : null,
+        price: parseFloat(price),
+        image_url: imageUrl || null,
+        is_active: is_active !== undefined ? parseInt(is_active) : existing.is_active
+      }
+    });
 
-    if (result.changes === 0) {
-      return res.status(404).json({ error: 'Mahsulot topilmadi.' });
-    }
-
-    const updated = await q.get('SELECT * FROM products WHERE id = ?', [id]);
-    res.json(updated);
+    res.json({
+      success: true,
+      data: updated,
+      message: 'Mahsulot muvaffaqiyatli yangilandi.'
+    });
   } catch (err) {
     console.error('Update product error:', err);
-    res.status(500).json({ error: 'Tizim xatoligi yuz berdi.' });
+    res.status(500).json({ success: false, message: 'Tizim xatoligi yuz berdi.' });
   }
 });
 
 // DELETE /api/products/:id (Admin only)
 router.delete('/:id', authenticateToken, requireRole(['admin']), async (req, res) => {
   try {
-    const q = getQuery();
     const { id } = req.params;
 
-    const result = await q.run('DELETE FROM products WHERE id = ?', [id]);
-    if (result.changes === 0) {
-      return res.status(404).json({ error: 'Mahsulot topilmadi.' });
-    }
+    await prisma.product.delete({
+      where: { id: parseInt(id) }
+    });
 
-    res.json({ success: true, message: 'Mahsulot o\'chirildi.' });
+    res.json({
+      success: true,
+      message: 'Mahsulot muvaffaqiyatli o\'chirildi.'
+    });
   } catch (err) {
     console.error('Delete product error:', err);
-    res.status(500).json({ error: 'Tizim xatoligi yuz berdi.' });
+    res.status(500).json({ success: false, message: 'Tizim xatoligi yuz berdi.' });
   }
 });
 

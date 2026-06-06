@@ -2,7 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { getQuery, seedDatabase } = require('../db/database');
+const prisma = require('../lib/prisma');
+const { hashPassword } = require('../utils/crypto');
 
 const authRoutes = require('../routes/auth');
 const branchRoutes = require('../routes/branches');
@@ -44,26 +45,98 @@ app.use(cors({
 // Body parser
 app.use(express.json());
 
-// Database initialisation on first request
-// Vercel serverless'da bu har bir cold start'da ishlaydi
+// Database check and seeding on first request using Prisma client
 let seeded = false;
 app.use(async (req, res, next) => {
   if (!seeded) {
     seeded = true;
     try {
-      console.log('Initializing database on first request...');
-      // Faqat query ob'ektini yaratish (lazy init)
-      // PostgreSQL bo'lsa, schema yaratiladi
-      // SQLite bo'lsa, fayl yaratiladi
-      getQuery();
-      
-      // Seed default ma'lumotlarni
-      console.log('Seeding database on first request...');
-      await seedDatabase();
-      console.log('Seed completed on first request.');
+      console.log('Checking database status using Prisma client...');
+      const branchCount = await prisma.branch.count();
+      if (branchCount === 0) {
+        console.log('No branches found. Seeding default database contents...');
+        
+        // 1. Default Branch
+        const branch = await prisma.branch.create({
+          data: {
+            id: 1,
+            name: 'Bosh Showroom',
+            address: 'Toshkent sh., Chilonzor 1-mavze',
+            phone: '+998 99 123 45 67',
+          }
+        });
+        console.log('✅ Default branch created:', branch.name);
+
+        // 2. Default Admin
+        const adminHash = hashPassword('admin123');
+        await prisma.user.create({
+          data: {
+            name: 'Administrator',
+            email: 'admin@yecgilam.uz',
+            password_hash: adminHash,
+            role: 'admin',
+            branch_id: branch.id,
+          }
+        });
+        console.log('✅ Default admin (admin@yecgilam.uz / admin123)');
+
+        // 3. Default Seller
+        const sellerHash = hashPassword('password123');
+        await prisma.user.create({
+          data: {
+            name: 'Sotuvchi Test',
+            email: 'seller@yecgilam.uz',
+            password_hash: sellerHash,
+            role: 'seller',
+            branch_id: branch.id,
+          }
+        });
+        console.log('✅ Default seller (seller@yecgilam.uz / password123)');
+
+        // 4. Default Products
+        const defaultProducts = [
+          { name: 'Turkiya Premium', description: "Yuqori sifatli Turkiya jun gilami, qalinligi 12mm", price: 450000 },
+          { name: 'Eron Ipak Gilam', description: "Nafis naqshli, qo'lda to'qilgan Eron ipak gilami", price: 1200000 },
+          { name: "O'zbekiston Baxmal", description: "Milliy naqshli, yumshoq va chidamli baxmal gilam", price: 350000 },
+          { name: 'Buxoro Shoyi Gilam', description: 'Klassik Buxoro nusxa shoyi gilam', price: 800000 },
+        ];
+
+        for (const prod of defaultProducts) {
+          await prisma.product.create({
+            data: {
+              name: prod.name,
+              description: prod.description,
+              price: prod.price,
+              is_active: 1,
+            }
+          });
+        }
+        console.log('✅ Sample products seeded');
+
+        // 5. Default Terms
+        const defaultTerms = `Texnik jixatlar
+1.1. Aniq o'lchamlar aytib o'tilganidan 1-2sm ga farq qilishi mumkin.
+1.2. Gilam ranglari vitrina na'munasidan 10% gacha farq qilishi mumkin.
+...
+Yetkazib berish va kafolat:
+2.1. Toshkent shahrida yetkazib berish shartnomada kelishilgan holda amalga oshiriladi.
+2.2. Yetkazib berish xizmati qavatga ko'tarish shartlarini o'z ichiga oladi.
+2.3. Yetkazib berish sanasida haridor yoki uning vakili kun davomida manzilda bo'lishi shart.
+2.4. Mahsulotni topshirish-qabul qilish jarayoni tugaganidan keyingi mexanik shikastlanishlar va nuqsonlar bo'yicha e'tirozlar qabul qilinmaydi!
+2.5. Maqbul sifatli va o'lchami kesilgan gilamlar qaytarib olinmaydi va almashtirib berilmaydi!`;
+
+        await prisma.setting.create({
+          data: {
+            key: 'receipt_terms',
+            value: defaultTerms
+          }
+        });
+        console.log('✅ Default terms seeded');
+      } else {
+        console.log('Database already has content. Seeding skipped.');
+      }
     } catch (err) {
-      console.error('Database init/seed error on startup:', err.message);
-      // Seeddagi xato server ishlashini to'xtatmasligi kerak
+      console.error('Database connection/seeding check failed on startup:', err.message);
     }
   }
   next();

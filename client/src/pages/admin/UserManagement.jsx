@@ -1,17 +1,47 @@
 import { useEffect, useState } from 'react';
 import Layout from '../../components/Layout';
 import { getUsers, createUser, updateUser, deleteUser, getBranches } from '../../services/api';
-import { Plus, Edit2, Trash2, Key, Users, X } from 'lucide-react';
-import './UserManagement.css';
+import {
+  Box,
+  Typography,
+  Button,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  CircularProgress,
+  Snackbar,
+  Alert,
+  Tooltip,
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Chip
+} from '@mui/material';
+import {
+  Add as AddIcon,
+  Edit as EditIcon,
+  Delete as DeleteIcon,
+  Close as CloseIcon,
+  People as PeopleIcon
+} from '@mui/icons-material';
 
 export default function UserManagement() {
   const [users, setUsers] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState(null);
-  const [successMsg, setSuccessMsg] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -20,21 +50,24 @@ export default function UserManagement() {
     branch_id: ''
   });
 
+  const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
+
   useEffect(() => {
     fetchData();
   }, []);
 
   const fetchData = async () => {
     try {
+      setLoading(true);
       const [usersData, branchesData] = await Promise.all([
         getUsers(),
         getBranches()
       ]);
       setUsers(usersData || []);
       setBranches(branchesData || []);
-      setLoading(false);
     } catch (err) {
-      setError('Ma\'lumotlarni yuklashda xato: ' + err.message);
+      showToast('Ma\'lumotlarni yuklashda xato: ' + err.message, 'error');
+    } finally {
       setLoading(false);
     }
   };
@@ -44,8 +77,16 @@ export default function UserManagement() {
       const response = await getUsers();
       setUsers(response || []);
     } catch (err) {
-      setError('Foydalanuvchilarni yuklashda xato: ' + err.message);
+      showToast('Foydalanuvchilarni yuklashda xato: ' + err.message, 'error');
     }
+  };
+
+  const showToast = (message, severity = 'success') => {
+    setToast({ open: true, message, severity });
+  };
+
+  const handleToastClose = () => {
+    setToast(prev => ({ ...prev, open: false }));
   };
 
   const openCreateForm = () => {
@@ -68,35 +109,47 @@ export default function UserManagement() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
+    if (!formData.name || !formData.email || (!editId && !formData.password)) {
+      showToast('Iltimos, barcha maydonlarni to\'g\'ri to\'ldiring', 'error');
+      return;
+    }
 
     try {
+      setLoading(true);
+      const payload = {
+        ...formData,
+        branch_id: formData.branch_id ? parseInt(formData.branch_id) : null
+      };
+      
       if (editId) {
-        await updateUser(editId, formData);
-        setSuccessMsg('Foydalanuvchi muvaffaqiyatli tahrirlandi!');
+        await updateUser(editId, payload);
+        showToast('Foydalanuvchi muvaffaqiyatli tahrirlandi!', 'success');
       } else {
-        await createUser(formData);
-        setSuccessMsg('Foydalanuvchi muvaffaqiyatli qo\'shildi!');
+        await createUser(payload);
+        showToast('Foydalanuvchi muvaffaqiyatli qo\'shildi!', 'success');
       }
-      await fetchUsers();
       setShowForm(false);
       setEditId(null);
       setFormData({ name: '', email: '', password: '', role: 'seller', branch_id: '' });
-      setTimeout(() => setSuccessMsg(''), 3000);
+      await fetchUsers();
     } catch (err) {
-      setError(err.message);
+      showToast(err.message, 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleDelete = async (id) => {
     if (!window.confirm('Bu foydalanuvchini o\'chirishni xohlaysizmi?')) return;
     try {
+      setLoading(true);
       await deleteUser(id);
-      setSuccessMsg('Foydalanuvchi o\'chirildi!');
+      showToast('Foydalanuvchi o\'chirildi!', 'success');
       await fetchUsers();
-      setTimeout(() => setSuccessMsg(''), 3000);
     } catch (err) {
-      setError(err.message);
+      showToast(err.message, 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -104,165 +157,176 @@ export default function UserManagement() {
     { path: '/admin/dashboard', label: 'Asosiy' },
     { path: '/admin/products', label: 'Mahsulotlar' },
     { path: '/admin/branches', label: 'Filiallar' },
-    { path: '/admin/users', label: 'Foydalanuvchilar' }
+    { path: '/admin/users', label: 'Foydalanuvchilar' },
+    { path: '/admin/orders', label: 'Buyurtmalar' },
+    { path: '/admin/statistics', label: 'Statistika' }
   ];
-
-  if (loading) {
-    return (
-      <Layout navItems={navItems}>
-        <div className="user-management">
-          <div className="loading-container">
-            <div className="loading-spinner"></div>
-            <p className="loading-text">Yuklanmoqda...</p>
-          </div>
-        </div>
-      </Layout>
-    );
-  }
 
   return (
     <Layout navItems={navItems}>
-      <div className="user-management animate-fadeIn">
-        <div className="header">
-          <h2 className="page-title"><Users size={28} /> Foydalanuvchilarni Boshqarish</h2>
-          <button className="btn btn-primary" onClick={openCreateForm}>
-            <Plus size={20} />
+      <Box sx={{ width: '100%' }}>
+        {/* Header */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+          <Typography variant="h5" component="h2" sx={{ fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: 1 }}>
+            <PeopleIcon /> Foydalanuvchilarni Boshqarish
+          </Typography>
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<AddIcon />}
+            onClick={openCreateForm}
+            sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}
+          >
             Yangi Foydalanuvchi
-          </button>
-        </div>
+          </Button>
+        </Box>
 
-        {error && <div className="error-message animate-shake">{error}</div>}
-        {successMsg && <div className="success-message animate-fadeIn">{successMsg}</div>}
-
-        {/* Form Modal */}
-        {showForm && (
-          <div className="form-card animate-scaleIn">
-            <div className="form-card-header">
-              <h3><Users size={20} /> {editId ? 'Foydalanuvchini Tahrirlash' : 'Yangi Foydalanuvchi Qo\'shish'}</h3>
-              <button className="btn-icon close-form" onClick={() => { setShowForm(false); setEditId(null); }}>
-                <X size={20} />
-              </button>
-            </div>
-            <form onSubmit={handleSubmit} className="user-form">
-              <div className="form-group">
-                <label>Ismi *</label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  required
-                  placeholder="Foydalanuvchi ismi"
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Email *</label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  required
-                  placeholder="email@example.com"
-                />
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label>{editId ? 'Yangi parol (agar o\'zgartirish kerak bo\'lsa)' : 'Parol *'}</label>
-                  <input
-                    type="password"
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    required={!editId}
-                    placeholder={editId ? 'Parolni o\'zgartirish uchun kiriting' : 'Kamida 6 belgi'}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Rol *</label>
-                  <select
-                    value={formData.role}
-                    onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                  >
-                    <option value="seller">Sotuvchi</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label>Filial</label>
-                <select
-                  value={formData.branch_id}
-                  onChange={(e) => setFormData({ ...formData, branch_id: e.target.value })}
-                >
-                  <option value="">Filial tanlanmagan</option>
-                  {branches.map(b => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="form-actions">
-                <button type="submit" className="btn btn-primary">
-                  {editId ? 'Saqlash' : 'Qo\'shish'}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => { setShowForm(false); setEditId(null); }}
-                >
-                  Bekor qilish
-                </button>
-              </div>
-            </form>
-          </div>
+        {/* Loading Spinner / Table */}
+        {loading && users.length === 0 ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+            <CircularProgress />
+          </Box>
+        ) : (
+          <TableContainer component={Paper} elevation={0} sx={{ border: '1px solid #e2e8f0', borderRadius: 3, overflow: 'hidden' }}>
+            <Table>
+              <TableHead sx={{ bgcolor: '#f8fafc' }}>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 600 }}>Ismi</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Email</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Rol</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Filial</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Qo'shilgan sana</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }} align="center">Amallar</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {users.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} align="center" sx={{ py: 6, color: 'text.secondary' }}>
+                      Foydalanuvchilar topilmadi
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  users.map((u) => (
+                    <TableRow key={u.id} hover sx={{ '&:last-child cell': { border: 0 } }}>
+                      <TableCell sx={{ fontWeight: 600 }}>{u.name}</TableCell>
+                      <TableCell>{u.email}</TableCell>
+                      <TableCell>
+                        <Chip
+                          label={u.role === 'admin' ? 'Admin' : 'Sotuvchi'}
+                          color={u.role === 'admin' ? 'secondary' : 'default'}
+                          size="small"
+                          sx={{ fontWeight: 600 }}
+                        />
+                      </TableCell>
+                      <TableCell>{u.branch_name || '-'}</TableCell>
+                      <TableCell>{new Date(u.created_at).toLocaleDateString('uz-UZ')}</TableCell>
+                      <TableCell align="center">
+                        <Tooltip title="Tahrirlash">
+                          <IconButton size="small" color="info" onClick={() => openEditForm(u)}>
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="O'chirish">
+                          <IconButton size="small" color="error" onClick={() => handleDelete(u.id)}>
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
         )}
 
-        <div className="users-list">
-          {users.length === 0 ? (
-            <div className="empty-state">Foydalanuvchilar topilmadi</div>
-          ) : (
-            <div className="table-container">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Ismi</th>
-                    <th>Email</th>
-                    <th>Rol</th>
-                    <th>Filial</th>
-                    <th>Qo'shilgan</th>
-                    <th>Amallar</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((user, index) => (
-                    <tr key={user.id} className="table-row-animate" style={{ animationDelay: `${index * 0.05}s` }}>
-                      <td><strong>{user.name}</strong></td>
-                      <td>{user.email}</td>
-                      <td>
-                        <span className={`role-badge role-${user.role}`}>
-                          {user.role === 'admin' ? 'Admin' : 'Sotuvchi'}
-                        </span>
-                      </td>
-                      <td>{user.branch_name || '-'}</td>
-                      <td>{new Date(user.created_at).toLocaleDateString('uz-UZ')}</td>
-                      <td>
-                        <button className="btn-icon" onClick={() => openEditForm(user)} title="Tahrirlash">
-                          <Edit2 size={18} />
-                        </button>
-                        <button className="btn-icon danger" onClick={() => handleDelete(user.id)} title="O'chirish">
-                          <Trash2 size={18} />
-                        </button>
-                      </td>
-                    </tr>
+        {/* Create/Edit User Dialog */}
+        <Dialog open={showForm} onClose={() => setShowForm(false)} maxWidth="xs" fullWidth>
+          <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6" fontWeight="700">
+              {editId ? 'Foydalanuvchini Tahrirlash' : 'Yangi Foydalanuvchi Qo\'shish'}
+            </Typography>
+            <IconButton onClick={() => setShowForm(false)}>
+              <CloseIcon />
+            </IconButton>
+          </DialogTitle>
+          <form onSubmit={handleSubmit}>
+            <DialogContent dividers sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+              <TextField
+                required
+                fullWidth
+                label="Foydalanuvchi ismi"
+                size="small"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              />
+              <TextField
+                required
+                fullWidth
+                type="email"
+                label="Email manzili"
+                size="small"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              />
+              <TextField
+                required={!editId}
+                fullWidth
+                type="password"
+                label={editId ? 'Yangi parol (ixtiyoriy)' : 'Parol'}
+                placeholder={editId ? 'Parolni o\'zgartirish uchun kiriting' : 'Kamida 6 belgi'}
+                size="small"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              />
+              <FormControl fullWidth size="small">
+                <InputLabel id="role-select-label">Rol</InputLabel>
+                <Select
+                  labelId="role-select-label"
+                  value={formData.role}
+                  label="Rol"
+                  onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                >
+                  <MenuItem value="seller">Sotuvchi (Seller)</MenuItem>
+                  <MenuItem value="admin">Admin (Administrator)</MenuItem>
+                </Select>
+              </FormControl>
+              <FormControl fullWidth size="small">
+                <InputLabel id="branch-select-label">Filial (ixtiyoriy)</InputLabel>
+                <Select
+                  labelId="branch-select-label"
+                  value={formData.branch_id}
+                  label="Filial (ixtiyoriy)"
+                  onChange={(e) => setFormData({ ...formData, branch_id: e.target.value })}
+                >
+                  <MenuItem value=""><em>Hech qaysi</em></MenuItem>
+                  {branches.map((b) => (
+                    <MenuItem key={b.id} value={b.id}>
+                      {b.name}
+                    </MenuItem>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
+                </Select>
+              </FormControl>
+            </DialogContent>
+            <DialogActions sx={{ p: 2 }}>
+              <Button onClick={() => setShowForm(false)} color="inherit" sx={{ textTransform: 'none' }}>
+                Bekor qilish
+              </Button>
+              <Button type="submit" variant="contained" color="primary" sx={{ textTransform: 'none', px: 3 }}>
+                {editId ? 'Saqlash' : 'Qo\'shish'}
+              </Button>
+            </DialogActions>
+          </form>
+        </Dialog>
+
+        {/* Toast Notification */}
+        <Snackbar open={toast.open} autoHideDuration={4000} onClose={handleToastClose}>
+          <Alert onClose={handleToastClose} severity={toast.severity} sx={{ width: '100%', borderRadius: 2 }}>
+            {toast.message}
+          </Alert>
+        </Snackbar>
+      </Box>
     </Layout>
   );
 }

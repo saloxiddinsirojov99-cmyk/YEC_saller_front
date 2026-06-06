@@ -31,9 +31,16 @@ function getAuthHeader() {
 async function handleResponse(response) {
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || errorData.message || 'Tizim xatoligi yuz berdi.');
+    throw new Error(errorData.message || errorData.error || 'Tizim xatoligi yuz berdi.');
   }
-  return response.json();
+  const json = await response.json();
+  if (json && json.success !== undefined) {
+    if (!json.success) {
+      throw new Error(json.message || 'Xatolik yuz berdi.');
+    }
+    return json.data !== undefined ? json.data : json;
+  }
+  return json;
 }
 
 function handleFetchError(err) {

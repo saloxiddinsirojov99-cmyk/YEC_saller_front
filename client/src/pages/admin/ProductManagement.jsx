@@ -1,13 +1,36 @@
 import { useEffect, useState } from 'react';
 import Layout from '../../components/Layout';
 import { getProducts, createProduct, updateProduct, deleteProduct } from '../../services/api';
-import { Plus, Edit2, Trash2, Package, X } from 'lucide-react';
-import './ProductManagement.css';
+import {
+  Box,
+  Typography,
+  Button,
+  IconButton,
+  Grid,
+  Card,
+  CardContent,
+  CardActions,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  CircularProgress,
+  Snackbar,
+  Alert,
+  Tooltip
+} from '@mui/material';
+import {
+  Add as AddIcon,
+  Edit as EditIcon,
+  Delete as DeleteIcon,
+  Close as CloseIcon,
+  Inventory as InventoryIcon
+} from '@mui/icons-material';
 
 export default function ProductManagement() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState(null);
   const [formData, setFormData] = useState({
@@ -15,7 +38,8 @@ export default function ProductManagement() {
     description: '',
     price: 0
   });
-  const [successMsg, setSuccessMsg] = useState('');
+
+  const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
 
   useEffect(() => {
     fetchProducts();
@@ -23,34 +47,47 @@ export default function ProductManagement() {
 
   const fetchProducts = async () => {
     try {
+      setLoading(true);
       const response = await getProducts();
       setProducts(response || []);
-      setLoading(false);
     } catch (err) {
-      setError('Mahsulotlarni yuklashda xato: ' + err.message);
+      showToast('Mahsulotlarni yuklashda xato: ' + err.message, 'error');
+    } finally {
       setLoading(false);
     }
   };
 
+  const showToast = (message, severity = 'success') => {
+    setToast({ open: true, message, severity });
+  };
+
+  const handleToastClose = () => {
+    setToast(prev => ({ ...prev, open: false }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
+    if (!formData.name || formData.price < 0) {
+      showToast('Iltimos, maydonlarni to\'g\'ri to\'ldiring', 'error');
+      return;
+    }
 
     try {
+      setLoading(true);
       if (editId) {
         await updateProduct(editId, formData);
-        setSuccessMsg('Mahsulot muvaffaqiyatli tahrirlandi!');
+        showToast('Mahsulot muvaffaqiyatli tahrirlandi!', 'success');
       } else {
         await createProduct(formData);
-        setSuccessMsg('Mahsulot muvaffaqiyatli qo\'shildi!');
+        showToast('Mahsulot muvaffaqiyatli qo\'shildi!', 'success');
       }
-      await fetchProducts();
       setShowForm(false);
       setEditId(null);
       setFormData({ name: '', description: '', price: 0 });
-      setTimeout(() => setSuccessMsg(''), 3000);
+      await fetchProducts();
     } catch (err) {
-      setError(err.message);
+      showToast(err.message, 'error');
+      setLoading(false);
     }
   };
 
@@ -67,12 +104,13 @@ export default function ProductManagement() {
   const handleDelete = async (id) => {
     if (!window.confirm('Bu mahsulotni o\'chirishni xohlaysizmi?')) return;
     try {
+      setLoading(true);
       await deleteProduct(id);
-      setSuccessMsg('Mahsulot o\'chirildi!');
+      showToast('Mahsulot o\'chirildi!', 'success');
       await fetchProducts();
-      setTimeout(() => setSuccessMsg(''), 3000);
     } catch (err) {
-      setError(err.message);
+      showToast(err.message, 'error');
+      setLoading(false);
     }
   };
 
@@ -80,126 +118,168 @@ export default function ProductManagement() {
     { path: '/admin/dashboard', label: 'Asosiy' },
     { path: '/admin/products', label: 'Mahsulotlar' },
     { path: '/admin/branches', label: 'Filiallar' },
-    { path: '/admin/users', label: 'Foydalanuvchilar' }
+    { path: '/admin/users', label: 'Foydalanuvchilar' },
+    { path: '/admin/orders', label: 'Buyurtmalar' },
+    { path: '/admin/statistics', label: 'Statistika' }
   ];
-
-  if (loading) {
-    return (
-      <Layout navItems={navItems}>
-        <div className="product-management">
-          <div className="loading-container">
-            <div className="loading-spinner"></div>
-            <p className="loading-text">Yuklanmoqda...</p>
-          </div>
-        </div>
-      </Layout>
-    );
-  }
 
   return (
     <Layout navItems={navItems}>
-      <div className="product-management animate-fadeIn">
-        <div className="header">
-          <h2 className="page-title">Mahsulotlarni Boshqarish</h2>
-          <button className="btn btn-primary" onClick={() => {
-            setShowForm(true);
-            setEditId(null);
-            setFormData({ name: '', description: '', price: 0 });
-          }}>
-            <Plus size={20} />
+      <Box sx={{ width: '100%' }}>
+        {/* Header */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+          <Typography variant="h5" component="h2" sx={{ fontWeight: 700, color: '#1e293b' }}>
+            Mahsulotlarni Boshqarish
+          </Typography>
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<AddIcon />}
+            onClick={() => {
+              setShowForm(true);
+              setEditId(null);
+              setFormData({ name: '', description: '', price: 0 });
+            }}
+            sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}
+          >
             Yangi Mahsulot
-          </button>
-        </div>
+          </Button>
+        </Box>
 
-        {error && <div className="error-message animate-shake">{error}</div>}
-        {successMsg && <div className="success-message animate-fadeIn">{successMsg}</div>}
-
-        {showForm && (
-          <div className="form-card animate-scaleIn">
-            <div className="form-card-header">
-              <h3><Package size={20} /> {editId ? 'Mahsulotni Tahrirlash' : 'Yangi Mahsulot Qo\'shish'}</h3>
-              <button className="btn-icon close-form" onClick={() => { setShowForm(false); setEditId(null); }}>
-                <X size={20} />
-              </button>
-            </div>
-            <form onSubmit={handleSubmit} className="product-form">
-              <div className="form-group">
-                <label>Mahsulot nomi *</label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  required
-                  placeholder="Mahsulot nomini kiriting"
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Tavsifi</label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  rows="3"
-                  placeholder="Mahsulot tavsifi"
-                ></textarea>
-              </div>
-
-              <div className="form-group">
-                <label>Narxi (so'm) *</label>
-                <input
-                  type="number"
-                  value={formData.price}
-                  onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
-                  min="0"
-                  step="1"
-                  required
-                />
-              </div>
-
-              <div className="form-actions">
-                <button type="submit" className="btn btn-primary">
-                  {editId ? 'Tahrirlashni Saqlash' : 'Qo\'shish'}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    setShowForm(false);
-                    setEditId(null);
-                  }}
-                >
-                  Bekor qilish
-                </button>
-              </div>
-            </form>
-          </div>
+        {/* Loading Spinner */}
+        {loading && products.length === 0 ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+            <CircularProgress />
+          </Box>
+        ) : (
+          <Grid container spacing={3}>
+            {products.length === 0 ? (
+              <Grid item xs={12}>
+                <Paper sx={{ p: 6, textAlignment: 'center', border: '1px dashed #cbd5e1', bgcolor: 'transparent', borderRadius: 3 }}>
+                  <Typography variant="body1" color="text.secondary" align="center">
+                    Mahsulotlar topilmadi
+                  </Typography>
+                </Paper>
+              </Grid>
+            ) : (
+              products.map((product) => (
+                <Grid item xs={12} sm={6} md={4} key={product.id}>
+                  <Card
+                    elevation={0}
+                    sx={{
+                      border: '1px solid #e2e8f0',
+                      borderRadius: 3,
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      '&:hover': {
+                        boxShadow: '0 8px 16px -4px rgba(0,0,0,0.08)'
+                      }
+                    }}
+                  >
+                    <CardContent sx={{ p: 2.5 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyBetween: 'space-between', gap: 1, mb: 1 }}>
+                        <InventoryIcon color="primary" sx={{ fontSize: 22, mt: 0.2 }} />
+                        <Box sx={{ flexGrow: 1 }}>
+                          <Typography variant="subtitle1" fontWeight="700" color="#0f172a">
+                            {product.name}
+                          </Typography>
+                          {product.code && (
+                            <Typography variant="caption" sx={{ bgcolor: '#f1f5f9', color: '#475569', px: 1, py: 0.2, borderRadius: 1, fontWeight: 600 }}>
+                              Kod: {product.code}
+                            </Typography>
+                          )}
+                        </Box>
+                      </Box>
+                      {product.description && (
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5, mb: 2, minHeight: '40px' }}>
+                          {product.description}
+                        </Typography>
+                      )}
+                      <Typography variant="h6" color="primary.main" fontWeight="700" sx={{ mt: 1 }}>
+                        {product.price.toLocaleString()} so'm
+                      </Typography>
+                    </CardContent>
+                    <CardActions sx={{ px: 2, pb: 2, pt: 0, justifyContent: 'flex-end', gap: 0.5 }}>
+                      <Tooltip title="Tahrirlash">
+                        <IconButton size="small" color="info" onClick={() => handleEdit(product)}>
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="O'chirish">
+                        <IconButton size="small" color="error" onClick={() => handleDelete(product.id)}>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </CardActions>
+                  </Card>
+                </Grid>
+              ))
+            )}
+          </Grid>
         )}
 
-        <div className="products-grid">
-          {products.length === 0 ? (
-            <div className="empty-state">Mahsulotlar topilmadi</div>
-          ) : (
-            products.map((product, index) => (
-              <div key={product.id} className="product-card animate-fadeInUp" style={{ animationDelay: `${index * 0.05}s` }}>
-                <div className="product-info">
-                  <h3>{product.name}</h3>
-                  {product.code && <p className="product-code">Kod: {product.code}</p>}
-                  {product.description && <p className="description">{product.description}</p>}
-                  <p className="price">{product.price.toLocaleString()} so'm</p>
-                </div>
-                <div className="product-actions">
-                  <button className="btn-icon" onClick={() => handleEdit(product)} title="Tahrirlash">
-                    <Edit2 size={18} />
-                  </button>
-                  <button className="btn-icon danger" onClick={() => handleDelete(product.id)} title="O'chirish">
-                    <Trash2 size={18} />
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
+        {/* Create/Edit Product Dialog */}
+        <Dialog open={showForm} onClose={() => setShowForm(false)} maxWidth="xs" fullWidth>
+          <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6" fontWeight="700">
+              {editId ? 'Mahsulotni Tahrirlash' : 'Yangi Mahsulot Qo\'shish'}
+            </Typography>
+            <IconButton onClick={() => setShowForm(false)}>
+              <CloseIcon />
+            </IconButton>
+          </DialogTitle>
+          <form onSubmit={handleSubmit}>
+            <DialogContent dividers>
+              <TextField
+                required
+                fullWidth
+                label="Mahsulot nomi"
+                size="small"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                sx={{ mb: 2.5 }}
+              />
+              <TextField
+                fullWidth
+                multiline
+                rows={3}
+                label="Tavsifi"
+                size="small"
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                sx={{ mb: 2.5 }}
+              />
+              <TextField
+                required
+                fullWidth
+                type="number"
+                label="Narxi (so'm)"
+                size="small"
+                value={formData.price}
+                onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
+                inputProps={{ min: 0 }}
+              />
+            </DialogContent>
+            <DialogActions sx={{ p: 2 }}>
+              <Button onClick={() => setShowForm(false)} color="inherit" sx={{ textTransform: 'none' }}>
+                Bekor qilish
+              </Button>
+              <Button type="submit" variant="contained" color="primary" sx={{ textTransform: 'none', px: 3 }}>
+                {editId ? 'Saqlash' : 'Qo\'shish'}
+              </Button>
+            </DialogActions>
+          </form>
+        </Dialog>
+
+        {/* Toast Notification */}
+        <Snackbar open={toast.open} autoHideDuration={4000} onClose={handleToastClose}>
+          <Alert onClose={handleToastClose} severity={toast.severity} sx={{ width: '100%', borderRadius: 2 }}>
+            {toast.message}
+          </Alert>
+        </Snackbar>
+      </Box>
     </Layout>
   );
 }

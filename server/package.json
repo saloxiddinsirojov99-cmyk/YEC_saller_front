@@ -1,15 +1,27 @@
 {
   "name": "yec-gilam-server",
-  "version": "1.0.0",
-  "description": "Backend API for YEC Gilam Order Management System",
+  "version": "2.0.0",
+  "description": "YEC Gilam Backend API - Prisma + PostgreSQL",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "db:init": "node db/init.js",
-    "vercel-build": "echo 'Vercel build: no build step needed for serverless functions'"
+    "db:init": "npm run db:push && npm run db:seed",
+    "db:push": "npx prisma db push --config ../prisma/prisma.config.ts",
+    "db:seed": "node prisma/seed.js",
+    "db:studio": "npx prisma studio --config ../prisma/prisma.config.ts",
+    "db:migrate": "npx prisma migrate dev --config ../prisma/prisma.config.ts",
+    "db:deploy": "npx prisma migrate deploy --config ../prisma/prisma.config.ts",
+    "db:generate": "npx prisma generate --config ../prisma/prisma.config.ts",
+    "postinstall": "npx prisma generate --config ../prisma/prisma.config.ts",
+    "vercel-build": "npx prisma generate --config ../prisma/prisma.config.ts"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
@@ -17,6 +29,10 @@
     "multer": "^2.1.1",
     "nodemailer": "^8.0.10",
     "pg": "^8.21.0"
+  },
+  "devDependencies": {
+    "prisma": "^7.8.0",
+    "tsx": "^4.22.4"
   },
   "optionalDependencies": {
     "sqlite3": "^5.1.7"

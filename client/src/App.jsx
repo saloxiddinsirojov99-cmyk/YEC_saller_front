@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
+import Register from './pages/Register';
 import SellerDashboard from './pages/seller/Dashboard';
 import CreateOrder from './pages/seller/CreateOrder';
 import OrderList from './pages/seller/OrderList';
@@ -11,14 +12,36 @@ import BranchManagement from './pages/admin/BranchManagement';
 import UserManagement from './pages/admin/UserManagement';
 import Statistics from './pages/admin/Statistics';
 import AdminOrderManagement from './pages/admin/OrderManagement';
+import { createTheme, ThemeProvider, CssBaseline } from '@mui/material';
 import './App.css';
+
+// Create a modern theme with Inter font family
+const theme = createTheme({
+  palette: {
+    primary: {
+      main: '#2563eb', // blue
+    },
+    secondary: {
+      main: '#10b981', // green
+    },
+    background: {
+      default: '#f3f4f6',
+    },
+  },
+  typography: {
+    fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+  },
+});
 
 function App() {
   return (
-    <Router>
-      <AuthProvider>
-        <Routes>
-          <Route path="/login" element={<Login />} />
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Router>
+        <AuthProvider>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
           
           {/* Sotuvchi Routes */}
           <Route
@@ -64,6 +87,7 @@ function App() {
         </Routes>
       </AuthProvider>
     </Router>
+    </ThemeProvider>
   );
 }
 

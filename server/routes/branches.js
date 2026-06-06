@@ -1,17 +1,22 @@
 const express = require('express');
-const router = express.Router();
-const { getQuery } = require('../db/database');
+const router = Router = express.Router();
+const prisma = require('../lib/prisma');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 
 // GET /api/branches (All authenticated users can list branches for dropdowns)
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const q = getQuery();
-    const branches = await q.all('SELECT * FROM branches ORDER BY name ASC');
-    res.json(branches);
+    const branches = await prisma.branch.findMany({
+      orderBy: { name: 'asc' }
+    });
+    res.json({
+      success: true,
+      data: branches,
+      message: 'Filiallar ro\'yxati muvaffaqiyatli yuklandi.'
+    });
   } catch (err) {
     console.error('List branches error:', err);
-    res.status(500).json({ error: 'Tizim xatoligi yuz berdi.' });
+    res.status(500).json({ success: false, message: 'Tizim xatoligi yuz berdi.' });
   }
 });
 
@@ -19,26 +24,27 @@ router.get('/', authenticateToken, async (req, res) => {
 router.post('/', authenticateToken, requireRole(['admin']), async (req, res) => {
   try {
     const { name, address, phone } = req.body;
-    const q = getQuery();
 
     if (!name) {
-      return res.status(400).json({ error: 'Filial nomi kiritilishi shart.' });
+      return res.status(400).json({ success: false, message: 'Filial nomi kiritilishi shart.' });
     }
 
-    const result = await q.run(
-      'INSERT INTO branches (name, address, phone) VALUES (?, ?, ?)',
-      [name, address, phone]
-    );
+    const branch = await prisma.branch.create({
+      data: {
+        name: name.trim(),
+        address: address ? address.trim() : null,
+        phone: phone ? phone.trim() : null
+      }
+    });
 
     res.status(201).json({
-      id: result.id,
-      name,
-      address,
-      phone
+      success: true,
+      data: branch,
+      message: 'Filial muvaffaqiyatli yaratildi.'
     });
   } catch (err) {
     console.error('Create branch error:', err);
-    res.status(500).json({ error: 'Tizim xatoligi yuz berdi.' });
+    res.status(500).json({ success: false, message: 'Tizim xatoligi yuz berdi.' });
   }
 });
 
@@ -47,25 +53,28 @@ router.put('/:id', authenticateToken, requireRole(['admin']), async (req, res) =
   try {
     const { name, address, phone } = req.body;
     const { id } = req.params;
-    const q = getQuery();
 
     if (!name) {
-      return res.status(400).json({ error: 'Filial nomi kiritilishi shart.' });
+      return res.status(400).json({ success: false, message: 'Filial nomi kiritilishi shart.' });
     }
 
-    const result = await q.run(
-      'UPDATE branches SET name = ?, address = ?, phone = ? WHERE id = ?',
-      [name, address, phone, id]
-    );
+    const branch = await prisma.branch.update({
+      where: { id: parseInt(id) },
+      data: {
+        name: name.trim(),
+        address: address ? address.trim() : null,
+        phone: phone ? phone.trim() : null
+      }
+    });
 
-    if (result.changes === 0) {
-      return res.status(404).json({ error: 'Filial topilmadi.' });
-    }
-
-    res.json({ id: parseInt(id), name, address, phone });
+    res.json({
+      success: true,
+      data: branch,
+      message: 'Filial muvaffaqiyatli yangilandi.'
+    });
   } catch (err) {
     console.error('Update branch error:', err);
-    res.status(500).json({ error: 'Tizim xatoligi yuz berdi.' });
+    res.status(500).json({ success: false, message: 'Tizim xatoligi yuz berdi.' });
   }
 });
 
@@ -73,17 +82,18 @@ router.put('/:id', authenticateToken, requireRole(['admin']), async (req, res) =
 router.delete('/:id', authenticateToken, requireRole(['admin']), async (req, res) => {
   try {
     const { id } = req.params;
-    const q = getQuery();
 
-    const result = await q.run('DELETE FROM branches WHERE id = ?', [id]);
-    if (result.changes === 0) {
-      return res.status(404).json({ error: 'Filial topilmadi.' });
-    }
+    await prisma.branch.delete({
+      where: { id: parseInt(id) }
+    });
 
-    res.json({ success: true, message: 'Filial o\'chirildi.' });
+    res.json({
+      success: true,
+      message: 'Filial muvaffaqiyatli o\'chirildi.'
+    });
   } catch (err) {
     console.error('Delete branch error:', err);
-    res.status(500).json({ error: 'Tizim xatoligi yuz berdi.' });
+    res.status(500).json({ success: false, message: 'Tizim xatoligi yuz berdi.' });
   }
 });
 

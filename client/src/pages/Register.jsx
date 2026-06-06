@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { getBranches } from '../services/api';
 import {
   Container,
   Box,
@@ -11,59 +11,102 @@ import {
   CircularProgress,
   Paper,
   InputAdornment,
-  IconButton
+  IconButton,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Select
 } from '@mui/material';
 import {
   Visibility,
   VisibilityOff,
   Email,
   Lock,
-  Login as LoginIcon
+  Person,
+  Business,
+  AssignmentInd,
+  HowToReg
 } from '@mui/icons-material';
 
-export default function Login() {
+export default function Register() {
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState('seller');
+  const [branchId, setBranchId] = useState('');
+  const [branches, setBranches] = useState([]);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const { login } = useAuth();
   const navigate = useNavigate();
 
-  // Simple form validation state
+  // Validation touch states
+  const [nameTouched, setNameTouched] = useState(false);
   const [emailTouched, setEmailTouched] = useState(false);
   const [passwordTouched, setPasswordTouched] = useState(false);
+
+  useEffect(() => {
+    const fetchBranches = async () => {
+      try {
+        const data = await getBranches();
+        setBranches(data || []);
+      } catch (err) {
+        console.error('Error fetching branches:', err);
+      }
+    };
+    fetchBranches();
+  }, []);
 
   const isEmailValid = (email) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   };
 
+  const nameError = nameTouched && !name;
   const emailError = emailTouched && !email;
   const emailInvalid = emailTouched && email && !isEmailValid(email);
   const passwordError = passwordTouched && !password;
+  const passwordTooShort = passwordTouched && password && password.length < 6;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setNameTouched(true);
     setEmailTouched(true);
     setPasswordTouched(true);
 
-    if (!email || !password || !isEmailValid(email)) {
+    if (!name || !email || !password || !role || !isEmailValid(email) || password.length < 6) {
       setError('Iltimos, barcha maydonlarni to\'g\'ri to\'ldiring.');
       return;
     }
 
     setError('');
+    setSuccessMsg('');
     setLoading(true);
 
     try {
-      const user = await login(email, password);
-      if (user.role === 'admin') {
-        navigate('/admin/dashboard');
-      } else if (user.role === 'seller') {
-        navigate('/seller/dashboard');
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim().toLowerCase(),
+          password,
+          role,
+          branch_id: branchId ? parseInt(branchId) : null
+        })
+      });
+
+      const json = await response.json();
+      if (!response.ok) {
+        throw new Error(json.message || json.error || 'Ro\'yxatdan o\'tishda xatolik yuz berdi.');
       }
+
+      setSuccessMsg('Muvaffaqiyatli ro\'yxatdan o\'tildi! Kirish sahifasiga yo\'naltirilmoqda...');
+      setTimeout(() => {
+        navigate('/login');
+      }, 2000);
     } catch (err) {
-      setError(err?.message || 'Login yoki parol noto\'g\'ri.');
+      setError(err?.message || 'Ro\'yxatdan o\'tishda xatolik yuz berdi.');
     } finally {
       setLoading(false);
     }
@@ -79,6 +122,7 @@ export default function Login() {
         background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
         position: 'relative',
         overflow: 'hidden',
+        py: 4,
         px: 2,
       }}
     >
@@ -125,23 +169,6 @@ export default function Login() {
             alignItems: 'center',
           }}
         >
-          {/* Logo container */}
-          <Box
-            component="img"
-            src="/logo.svg"
-            alt="YEC Gilam Logo"
-            onError={(e) => {
-              // Fallback if logo doesn't exist yet
-              e.target.style.display = 'none';
-            }}
-            sx={{
-              width: 80,
-              height: 80,
-              mb: 2,
-              filter: 'drop-shadow(0 2px 8px rgba(37, 99, 235, 0.4))',
-            }}
-          />
-
           <Typography
             variant="h5"
             component="h1"
@@ -153,7 +180,7 @@ export default function Login() {
               textAlign: 'center',
             }}
           >
-            YEC Gilam
+            Ro'yxatdan O'tish
           </Typography>
           <Typography
             variant="body2"
@@ -163,7 +190,7 @@ export default function Login() {
               textAlign: 'center',
             }}
           >
-            Buyurtma Boshqaruv Tizimi
+            YEC Gilam Boshqaruv Tizimi
           </Typography>
 
           {error && (
@@ -176,12 +203,27 @@ export default function Login() {
                 backgroundColor: 'rgba(239, 68, 68, 0.15)',
                 color: '#f87171',
                 border: '1px solid rgba(239, 68, 68, 0.2)',
-                '& .MuiAlert-icon': {
-                  color: '#f87171',
-                },
+                '& .MuiAlert-icon': { color: '#f87171' },
               }}
             >
               {error}
+            </Alert>
+          )}
+
+          {successMsg && (
+            <Alert
+              severity="success"
+              sx={{
+                width: '100%',
+                mb: 3,
+                borderRadius: 2,
+                backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                color: '#34d399',
+                border: '1px solid rgba(16, 185, 129, 0.2)',
+                '& .MuiAlert-icon': { color: '#34d399' },
+              }}
+            >
+              {successMsg}
             </Alert>
           )}
 
@@ -195,11 +237,46 @@ export default function Login() {
               margin="normal"
               required
               fullWidth
+              id="name"
+              label="Ism va Familiya"
+              name="name"
+              autoComplete="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onBlur={() => setNameTouched(true)}
+              error={nameError}
+              helperText={nameError ? 'Ism kiritilishi shart' : ''}
+              disabled={loading}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Person sx={{ color: 'rgba(255, 255, 255, 0.4)' }} />
+                  </InputAdornment>
+                ),
+              }}
+              sx={{
+                mb: 1.5,
+                '& label': { color: 'rgba(255, 255, 255, 0.5)' },
+                '& label.Mui-focused': { color: '#3b82f6' },
+                '& .MuiInputBase-input': { color: '#fff' },
+                '& .MuiFormHelperText-root': { color: '#f87171' },
+                '& .MuiOutlinedInput-root': {
+                  '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.1)' },
+                  '&:hover fieldset': { borderColor: 'rgba(255, 255, 255, 0.2)' },
+                  '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                  '&.Mui-error fieldset': { borderColor: '#ef4444' },
+                },
+              }}
+            />
+
+            <TextField
+              margin="normal"
+              required
+              fullWidth
               id="email"
-              label="Email Manzil"
+              label="Email"
               name="email"
               autoComplete="email"
-              autoFocus
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               onBlur={() => setEmailTouched(true)}
@@ -220,7 +297,7 @@ export default function Login() {
                 ),
               }}
               sx={{
-                mb: 2,
+                mb: 1.5,
                 '& label': { color: 'rgba(255, 255, 255, 0.5)' },
                 '& label.Mui-focused': { color: '#3b82f6' },
                 '& .MuiInputBase-input': { color: '#fff' },
@@ -239,15 +316,21 @@ export default function Login() {
               required
               fullWidth
               name="password"
-              label="Parol"
+              label="Parol (kamida 6 ta belgi)"
               type={showPassword ? 'text' : 'password'}
               id="password"
-              autoComplete="current-password"
+              autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               onBlur={() => setPasswordTouched(true)}
-              error={passwordError}
-              helperText={passwordError ? 'Parol kiritilishi shart' : ''}
+              error={passwordError || passwordTooShort}
+              helperText={
+                passwordError
+                  ? 'Parol kiritilishi shart'
+                  : passwordTooShort
+                  ? 'Parol kamida 6 belgidan iborat bo\'lishi kerak'
+                  : ''
+              }
               disabled={loading}
               InputProps={{
                 startAdornment: (
@@ -269,7 +352,7 @@ export default function Login() {
                 ),
               }}
               sx={{
-                mb: 3,
+                mb: 2,
                 '& label': { color: 'rgba(255, 255, 255, 0.5)' },
                 '& label.Mui-focused': { color: '#3b82f6' },
                 '& .MuiInputBase-input': { color: '#fff' },
@@ -283,13 +366,85 @@ export default function Login() {
               }}
             />
 
+            <FormControl
+              fullWidth
+              sx={{
+                mb: 2,
+                '& label': { color: 'rgba(255, 255, 255, 0.5)' },
+                '& label.Mui-focused': { color: '#3b82f6' },
+                '& .MuiSelect-select': { color: '#fff' },
+                '& .MuiOutlinedInput-root': {
+                  '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.1)' },
+                  '&:hover fieldset': { borderColor: 'rgba(255, 255, 255, 0.2)' },
+                  '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                },
+                '& .MuiSvgIcon-root': { color: 'rgba(255, 255, 255, 0.4)' },
+              }}
+            >
+              <InputLabel id="role-label">Rol</InputLabel>
+              <Select
+                labelId="role-label"
+                id="role"
+                value={role}
+                label="Rol"
+                onChange={(e) => setRole(e.target.value)}
+                disabled={loading}
+                startAdornment={
+                  <InputAdornment position="start" sx={{ mr: 1 }}>
+                    <AssignmentInd sx={{ color: 'rgba(255, 255, 255, 0.4)' }} />
+                  </InputAdornment>
+                }
+              >
+                <MenuItem value="seller">Sotuvchi (Seller)</MenuItem>
+                <MenuItem value="admin">Admin (Administrator)</MenuItem>
+              </Select>
+            </FormControl>
+
+            <FormControl
+              fullWidth
+              sx={{
+                mb: 3,
+                '& label': { color: 'rgba(255, 255, 255, 0.5)' },
+                '& label.Mui-focused': { color: '#3b82f6' },
+                '& .MuiSelect-select': { color: '#fff' },
+                '& .MuiOutlinedInput-root': {
+                  '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.1)' },
+                  '&:hover fieldset': { borderColor: 'rgba(255, 255, 255, 0.2)' },
+                  '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                },
+                '& .MuiSvgIcon-root': { color: 'rgba(255, 255, 255, 0.4)' },
+              }}
+            >
+              <InputLabel id="branch-label">Filial (ixtiyoriy)</InputLabel>
+              <Select
+                labelId="branch-label"
+                id="branchId"
+                value={branchId}
+                label="Filial (ixtiyoriy)"
+                onChange={(e) => setBranchId(e.target.value)}
+                disabled={loading}
+                startAdornment={
+                  <InputAdornment position="start" sx={{ mr: 1 }}>
+                    <Business sx={{ color: 'rgba(255, 255, 255, 0.4)' }} />
+                  </InputAdornment>
+                }
+              >
+                <MenuItem value=""><em>Hech qaysi</em></MenuItem>
+                {branches.map((b) => (
+                  <MenuItem key={b.id} value={b.id}>
+                    {b.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
             <Button
               type="submit"
               fullWidth
               variant="contained"
               disabled={loading}
               sx={{
-                mt: 2,
+                mt: 1,
                 mb: 2,
                 py: 1.5,
                 borderRadius: 2,
@@ -307,8 +462,8 @@ export default function Login() {
                 <CircularProgress size={24} sx={{ color: '#fff' }} />
               ) : (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <LoginIcon sx={{ fontSize: 18 }} />
-                  <span>Kirish</span>
+                  <HowToReg sx={{ fontSize: 18 }} />
+                  <span>Ro'yxatdan O'tish</span>
                 </Box>
               )}
             </Button>
@@ -321,10 +476,10 @@ export default function Login() {
                 color: 'rgba(255, 255, 255, 0.4)',
               }}
             >
-              Hisobingiz yo'qmi?{' '}
+              Hisobingiz bormi?{' '}
               <Button
                 component={RouterLink}
-                to="/register"
+                to="/login"
                 sx={{
                   color: '#3b82f6',
                   textTransform: 'none',
@@ -335,7 +490,7 @@ export default function Login() {
                   '&:hover': { textDecoration: 'underline' },
                 }}
               >
-                Ro'yxatdan o'tish
+                Kirish
               </Button>
             </Typography>
           </Box>
