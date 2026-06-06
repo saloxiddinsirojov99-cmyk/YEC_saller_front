@@ -7,14 +7,14 @@
     "start": "node index.js",
     "dev": "node --watch index.js",
     "db:init": "npm run db:push && npm run db:seed",
-    "db:push": "npx prisma db push --config ../prisma/prisma.config.ts",
+    "db:push": "npx prisma db push --config prisma/prisma.config.ts",
     "db:seed": "node prisma/seed.js",
-    "db:studio": "npx prisma studio --config ../prisma/prisma.config.ts",
-    "db:migrate": "npx prisma migrate dev --config ../prisma/prisma.config.ts",
-    "db:deploy": "npx prisma migrate deploy --config ../prisma/prisma.config.ts",
-    "db:generate": "npx prisma generate --config ../prisma/prisma.config.ts",
-    "postinstall": "npx prisma generate --config ../prisma/prisma.config.ts",
-    "vercel-build": "npx prisma generate --config ../prisma/prisma.config.ts"
+    "db:studio": "npx prisma studio --config prisma/prisma.config.ts",
+    "db:migrate": "npx prisma migrate dev --config prisma/prisma.config.ts",
+    "db:deploy": "npx prisma migrate deploy --config prisma/prisma.config.ts",
+    "db:generate": "npx prisma generate --config prisma/prisma.config.ts",
+    "postinstall": "npx prisma generate --config prisma/prisma.config.ts",
+    "vercel-build": "npx prisma generate --config prisma/prisma.config.ts"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
