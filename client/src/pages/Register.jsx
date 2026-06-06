@@ -83,8 +83,11 @@ export default function Register() {
     setSuccessMsg('');
     setLoading(true);
 
-    try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/auth/register`, {
+      const apiUrl = import.meta.env.VITE_API_URL 
+        || (import.meta.env.PROD 
+            ? 'https://yec-seller.vercel.app/api' 
+            : 'http://localhost:5000/api');
+      const response = await fetch(`${apiUrl}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -15,27 +15,27 @@ const statsRoutes = require('../routes/stats');
 const app = express();
 
 // CORS - allow frontend domains
-const allowedOrigins = process.env.CORS_ORIGIN 
-  ? process.env.CORS_ORIGIN.split(',').map(s => s.trim()) 
-  : [
-      'http://localhost:5173', 
-      'http://localhost:3000', 
-      'https://yec-sallers.vercel.app',
-      'https://yec-saller-front.vercel.app'
-    ];
+const allowedOrigins = [
+  process.env.FRONTEND_URL || 'https://yec-sallers.vercel.app'
+];
+
+if (process.env.NODE_ENV !== 'production') {
+  allowedOrigins.push('http://localhost:5173');
+  allowedOrigins.push('http://localhost:3000');
+}
 
 app.use(cors({
   origin: function(origin, callback) {
     // Allow requests with no origin (server-to-server, mobile apps)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+    if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
       return callback(null, true);
     }
-    // For production, also allow any Vercel deployment
-    if (origin && (origin.includes('vercel.app') || origin.includes('localhost'))) {
+    // For development, also allow any Vercel deployment previews
+    if (process.env.NODE_ENV !== 'production' && origin.includes('vercel.app')) {
       return callback(null, true);
     }
-    callback(null, true); // Allow all in production for now
+    callback(new Error('CORS error: Origin not allowed.'));
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],

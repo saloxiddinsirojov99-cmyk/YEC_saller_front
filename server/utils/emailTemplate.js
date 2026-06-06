@@ -53,7 +53,7 @@ function sendEmailHtml({ action, userName, userEmail, userRole, tempPassword, ch
           <!-- HEADER -->
           <tr>
             <td style="background: linear-gradient(135deg, #1a56db 0%, #0f3b8c 100%); padding: 30px 40px; text-align: center;">
-              <img src="https://yec-saller-front.vercel.app/favicon.svg" alt="YEC Gilam" width="60" height="60" style="display: block; margin: 0 auto 15px auto; border-radius: 50%; background: rgba(255,255,255,0.15); padding: 8px;">
+              <img src="https://yec-sallers.vercel.app/favicon.svg" alt="YEC Gilam" width="60" height="60" style="display: block; margin: 0 auto 15px auto; border-radius: 50%; background: rgba(255,255,255,0.15); padding: 8px;">
               <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 700; letter-spacing: 1px;">YEC GILAM</h1>
               <p style="margin: 5px 0 0 0; color: rgba(255,255,255,0.85); font-size: 14px;">Buyurtma Boshqaruv Tizimi</p>
             </td>
