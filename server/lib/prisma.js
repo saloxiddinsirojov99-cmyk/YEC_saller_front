@@ -12,14 +12,14 @@ if (!globalForPrisma.prisma) {
     console.warn("Warning: DATABASE_URL environment variable is not defined.");
   }
 
+  const useSsl = connectionString && !connectionString.includes('localhost') && !connectionString.includes('127.0.0.1');
+
   const pool = new Pool({
     connectionString,
     max: process.env.NODE_ENV === 'production' ? 3 : 5, // Low pool size for serverless
     idleTimeoutMillis: 15000, // Close idle connections faster in serverless
     connectionTimeoutMillis: 5000,
-    ssl: {
-      rejectUnauthorized: false, // Required for Neon / Supabase / Aiven PostgreSQL
-    },
+    ssl: useSsl ? { rejectUnauthorized: false } : false,
   });
 
   const adapter = new PrismaPg(pool);

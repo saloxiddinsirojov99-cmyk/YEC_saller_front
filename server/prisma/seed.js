@@ -5,6 +5,8 @@
 // Or:  node prisma/seed.js
 // ============================================================
 
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const { hashPassword } = require('../utils/crypto');
 const prisma = require('../lib/prisma');
 
