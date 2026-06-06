@@ -58,13 +58,29 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/stats', statsRoutes);
 
 // Health check endpoint
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
   const hasDB = !!process.env.DATABASE_URL;
+  let dbStatus = 'not_configured';
+  let dbError = null;
+
+  if (hasDB) {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      dbStatus = 'connected';
+    } catch (err) {
+      dbStatus = 'error';
+      dbError = err.message;
+    }
+  }
+
   res.json({ 
     status: 'OK', 
     timestamp: new Date(),
     environment: process.env.VERCEL === '1' ? 'vercel' : 'local',
-    database: hasDB ? 'postgresql' : 'sqlite'
+    database: hasDB ? 'postgresql' : 'not_configured',
+    dbStatus,
+    dbError,
+    hasJwtSecret: !!process.env.JWT_SECRET
   });
 });
 

@@ -6,31 +6,26 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "db:push": "npx prisma db push",
+    "db:push": "npx prisma db push --schema=./prisma/schema.prisma",
     "db:seed": "node prisma/seed.js",
-    "db:init": "npx prisma db push && node prisma/seed.js",
     "db:studio": "npx prisma studio",
-    "postinstall": "npx prisma generate",
-    "vercel-build": "npx prisma generate"
+    "postinstall": "npx prisma generate --schema=./prisma/schema.prisma",
+    "vercel-build": "npx prisma generate --schema=./prisma/schema.prisma"
   },
   "prisma": {
+    "schema": "./prisma/schema.prisma",
     "seed": "node prisma/seed.js"
   },
   "dependencies": {
-    "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.1.1",
-    "nodemailer": "^8.0.10",
-    "pg": "^8.21.0"
+    "nodemailer": "^8.0.10"
   },
   "devDependencies": {
     "prisma": "^7.8.0"
-  },
-  "optionalDependencies": {
-    "sqlite3": "^5.1.7"
   }
-}
+}
