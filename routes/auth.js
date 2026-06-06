@@ -8,10 +8,31 @@ const { authenticateToken, JWT_SECRET } = require('../middleware/auth');
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
   try {
+    if (!req.body) {
+      return res.status(400).json({ success: false, message: 'So\'rov tanasi (request body) bo\'sh bo\'lishi mumkin emas.' });
+    }
+
     const { email, password } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ success: false, message: 'Email va parol kiritilishi shart.' });
+    if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
+      return res.status(400).json({ success: false, message: 'Email va parol matn ko\'rinishida kiritilishi shart.' });
+    }
+
+    // Check environment configuration
+    if (!process.env.DATABASE_URL) {
+      console.error('DevOps Error: DATABASE_URL is not defined in environment variables.');
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Ma\'lumotlar bazasi bilan ulanish sozlanmagan. Vercel dashboard-da DATABASE_URL o\'zgaruvchisini sozlang.' 
+      });
+    }
+
+    if (!JWT_SECRET) {
+      console.error('DevOps Error: JWT_SECRET is not defined or is empty.');
+      return res.status(500).json({
+        success: false,
+        message: 'JWT maxfiy kaliti sozlanmagan.'
+      });
     }
 
     // Find user using Prisma
@@ -60,8 +81,12 @@ router.post('/login', async (req, res) => {
       message: 'Tizimga muvaffaqiyatli kirildi.'
     });
   } catch (err) {
-    console.error('Login error:', err);
-    res.status(500).json({ success: false, message: 'Tizim xatoligi yuz berdi.' });
+    console.error('Login endpoint error:', err);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Tizim xatoligi yuz berdi.', 
+      error: err.message 
+    });
   }
 });
 
