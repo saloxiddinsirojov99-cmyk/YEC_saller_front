@@ -16,7 +16,7 @@ const app = express();
 
 // CORS - allow frontend domains
 const allowedOrigins = [
-  process.env.FRONTEND_URL || 'https://yec-sallers.vercel.app'
+  (process.env.FRONTEND_URL || 'https://yec-sallers.vercel.app').replace(/\/$/, '')
 ];
 
 if (process.env.NODE_ENV !== 'production') {
@@ -28,14 +28,19 @@ app.use(cors({
   origin: function(origin, callback) {
     // Allow requests with no origin (server-to-server, mobile apps)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+    
+    // Normalize origin by stripping trailing slash
+    const normalizedOrigin = origin.replace(/\/$/, '');
+    
+    if (allowedOrigins.includes(normalizedOrigin) || allowedOrigins.includes('*')) {
       return callback(null, true);
     }
-    // For development, also allow any Vercel deployment previews
-    if (process.env.NODE_ENV !== 'production' && origin.includes('vercel.app')) {
+    // Allow Vercel deployment previews
+    if (normalizedOrigin.endsWith('.vercel.app')) {
       return callback(null, true);
     }
-    callback(new Error('CORS error: Origin not allowed.'));
+    // Return null, false to reject CORS without throwing an error that crashes the request with a 500 status
+    callback(null, false);
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
