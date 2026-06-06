@@ -100,7 +100,7 @@ async function sendUserNotificationEmail({ action, user, tempPassword, changedFi
     userRole: user.role,
     tempPassword,
     changedFields,
-    loginUrl: process.env.FRONTEND_URL || 'https://yec-saller-front.vercel.app/login'
+    loginUrl: process.env.FRONTEND_URL || 'https://yec-sallers.vercel.app/login'
   });
 
   const result = await sendEmail({

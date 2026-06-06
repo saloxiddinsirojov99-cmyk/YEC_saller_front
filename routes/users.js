@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getQuery } = require('../db/database');
+const prisma = require('../lib/prisma');
 const { hashPassword } = require('../utils/crypto');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { sendUserNotificationEmail } = require('../utils/email');
@@ -11,17 +11,26 @@ router.use(authenticateToken, requireRole(['admin']));
 // GET /api/users - List all users with branch details
 router.get('/', async (req, res) => {
   try {
-    const q = getQuery();
-    const users = await q.all(
-      `SELECT u.id, u.name, u.email, u.role, u.branch_id, u.created_at, b.name as branch_name 
-       FROM users u
-       LEFT JOIN branches b ON u.branch_id = b.id
-       ORDER BY u.name ASC`
-    );
-    res.json(users);
+    const users = await prisma.user.findMany({
+      include: {
+        branch: { select: { name: true } }
+      },
+      orderBy: { name: 'asc' }
+    });
+
+    const formattedUsers = users.map(user => ({
+      ...user,
+      branch_name: user.branch?.name || null
+    }));
+
+    res.json({
+      success: true,
+      data: formattedUsers,
+      message: 'Foydalanuvchilar ro\'yxati muvaffaqiyatli yuklandi.'
+    });
   } catch (err) {
     console.error('List users error:', err);
-    res.status(500).json({ error: 'Tizim xatoligi yuz berdi.' });
+    res.status(500).json({ success: false, message: 'Tizim xatoligi yuz berdi.' });
   }
 });
 
@@ -29,48 +38,59 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const { name, email, password, role, branch_id } = req.body;
-    const q = getQuery();
 
     if (!name || !email || !password || !role) {
-      return res.status(400).json({ error: 'Ism, email, parol va rol kiritilishi shart.' });
+      return res.status(400).json({ success: false, message: 'Ism, email, parol va rol kiritilishi shart.' });
     }
 
     if (role !== 'admin' && role !== 'seller') {
-      return res.status(400).json({ error: 'Noto\'g\'ri rol tanlandi.' });
+      return res.status(400).json({ success: false, message: 'Noto\'g\'ri rol tanlandi.' });
     }
 
     // Check if email unique
-    const existingUser = await q.get('SELECT id FROM users WHERE email = ?', [email.trim().toLowerCase()]);
+    const existingUser = await prisma.user.findUnique({
+      where: { email: email.trim().toLowerCase() }
+    });
     if (existingUser) {
-      return res.status(400).json({ error: 'Ushbu email li foydalanuvchi allaqachon mavjud.' });
+      return res.status(400).json({ success: false, message: 'Ushbu email li foydalanuvchi allaqachon mavjud.' });
     }
 
     const passwordHash = hashPassword(password);
-    const result = await q.run(
-      'INSERT INTO users (name, email, password_hash, role, branch_id) VALUES (?, ?, ?, ?, ?)',
-      [name, email.trim().toLowerCase(), passwordHash, role, branch_id || null]
-    );
+    
+    const user = await prisma.user.create({
+      data: {
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        password_hash: passwordHash,
+        role: role,
+        branch_id: branch_id ? parseInt(branch_id) : null
+      }
+    });
 
     const newUser = {
-      id: result.id,
-      name,
-      email: email.trim().toLowerCase(),
-      role,
-      branch_id: branch_id || null,
-      created_at: new Date()
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      branch_id: user.branch_id,
+      created_at: user.created_at
     };
 
-    // Send email notification (non-blocking — never fails the request)
+    // Send email notification (non-blocking)
     sendUserNotificationEmail({
       action: 'created',
-      user: { id: result.id, name, email: email.trim().toLowerCase(), role },
+      user: { id: user.id, name: user.name, email: user.email, role: user.role },
       tempPassword: password
     }).catch(err => console.error('Email send failed (non-critical):', err.message));
 
-    res.status(201).json(newUser);
+    res.status(201).json({
+      success: true,
+      data: newUser,
+      message: 'Foydalanuvchi muvaffaqiyatli yaratildi.'
+    });
   } catch (err) {
     console.error('Create user error:', err);
-    res.status(500).json({ error: 'Tizim xatoligi yuz berdi.' });
+    res.status(500).json({ success: false, message: 'Tizim xatoligi yuz berdi.' });
   }
 });
 
@@ -79,75 +99,79 @@ router.put('/:id', async (req, res) => {
   try {
     const { name, email, password, role, branch_id } = req.body;
     const { id } = req.params;
-    const q = getQuery();
 
     if (!name || !email || !role) {
-      return res.status(400).json({ error: 'Ism, email va rol kiritilishi shart.' });
+      return res.status(400).json({ success: false, message: 'Ism, email va rol kiritilishi shart.' });
     }
 
     // Get old user data for comparison
-    const oldUser = await q.get('SELECT * FROM users WHERE id = ?', [id]);
+    const oldUser = await prisma.user.findUnique({
+      where: { id: parseInt(id) }
+    });
     if (!oldUser) {
-      return res.status(404).json({ error: 'Foydalanuvchi topilmadi.' });
+      return res.status(404).json({ success: false, message: 'Foydalanuvchi topilmadi.' });
     }
 
     // Check if email unique to another user
-    const existingUser = await q.get('SELECT id FROM users WHERE email = ? AND id != ?', [email.trim().toLowerCase(), id]);
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        email: email.trim().toLowerCase(),
+        id: { not: parseInt(id) }
+      }
+    });
     if (existingUser) {
-      return res.status(400).json({ error: 'Ushbu email boshqa foydalanuvchiga tegishli.' });
+      return res.status(400).json({ success: false, message: 'Ushbu email boshqa foydalanuvchiga tegishli.' });
     }
 
-    let passwordSql = '';
-    let params = [name, email.trim().toLowerCase(), role, branch_id || null];
+    const updateData = {
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      role: role,
+      branch_id: branch_id ? parseInt(branch_id) : null
+    };
     
     if (password) {
-      const passwordHash = hashPassword(password);
-      passwordSql = ', password_hash = ?';
-      params.push(passwordHash);
+      updateData.password_hash = hashPassword(password);
     }
     
-    params.push(id);
-
-    const result = await q.run(
-      `UPDATE users 
-       SET name = ?, email = ?, role = ?, branch_id = ? ${passwordSql} 
-       WHERE id = ?`,
-      params
-    );
-
-    if (result.changes === 0) {
-      return res.status(404).json({ error: 'Foydalanuvchi topilmadi.' });
-    }
+    const updatedUser = await prisma.user.update({
+      where: { id: parseInt(id) },
+      data: updateData
+    });
 
     // Track changed fields for email
     const changedFields = [];
     if (oldUser.name !== name) changedFields.push('Ism');
     if (oldUser.email !== email.trim().toLowerCase()) changedFields.push('Email');
     if (oldUser.role !== role) changedFields.push('Rol');
-    if (oldUser.branch_id !== (branch_id || null)) changedFields.push('Filial');
+    if (oldUser.branch_id !== (branch_id ? parseInt(branch_id) : null)) changedFields.push('Filial');
     if (password) changedFields.push('Parol');
 
-    const updatedUser = {
-      id: parseInt(id),
-      name,
-      email: email.trim().toLowerCase(),
-      role,
-      branch_id: branch_id || null
+    const resultUser = {
+      id: updatedUser.id,
+      name: updatedUser.name,
+      email: updatedUser.email,
+      role: updatedUser.role,
+      branch_id: updatedUser.branch_id
     };
 
-    // Send email notification (non-blocking — never fails the request)
+    // Send email notification (non-blocking)
     if (changedFields.length > 0) {
       sendUserNotificationEmail({
         action: 'updated',
-        user: { id: parseInt(id), name, email: email.trim().toLowerCase(), role },
+        user: { id: updatedUser.id, name: updatedUser.name, email: updatedUser.email, role: updatedUser.role },
         changedFields
       }).catch(err => console.error('Email send failed (non-critical):', err.message));
     }
 
-    res.json(updatedUser);
+    res.json({
+      success: true,
+      data: resultUser,
+      message: 'Foydalanuvchi muvaffaqiyatli yangilandi.'
+    });
   } catch (err) {
     console.error('Update user error:', err);
-    res.status(500).json({ error: 'Tizim xatoligi yuz berdi.' });
+    res.status(500).json({ success: false, message: 'Tizim xatoligi yuz berdi.' });
   }
 });
 
@@ -155,22 +179,23 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const q = getQuery();
 
     // Prevent admin from deleting themselves
     if (parseInt(id) === req.user.id) {
-      return res.status(400).json({ error: 'O\'zingizning profilingizni o\'chira olmaysiz.' });
+      return res.status(400).json({ success: false, message: 'O\'zingizning profilingizni o\'chira olmaysiz.' });
     }
 
-    const result = await q.run('DELETE FROM users WHERE id = ?', [id]);
-    if (result.changes === 0) {
-      return res.status(404).json({ error: 'Foydalanuvchi topilmadi.' });
-    }
+    await prisma.user.delete({
+      where: { id: parseInt(id) }
+    });
 
-    res.json({ success: true, message: 'Foydalanuvchi o\'chirildi.' });
+    res.json({
+      success: true,
+      message: 'Foydalanuvchi muvaffaqiyatli o\'chirildi.'
+    });
   } catch (err) {
     console.error('Delete user error:', err);
-    res.status(500).json({ error: 'Tizim xatoligi yuz berdi.' });
+    res.status(500).json({ success: false, message: 'Tizim xatoligi yuz berdi.' });
   }
 });
 
