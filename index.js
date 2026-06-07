@@ -25,17 +25,35 @@ app.use('/api/stats', statsRoutes);
 
 // Health check endpoint
 app.get('/api/health', async (req, res) => {
-  const dbConfigured = !!process.env.DATABASE_URL;
-  let dbStatus = 'not_configured';
-  if (dbConfigured) {
-    try {
-      await prisma.$queryRaw`SELECT 1`;
-      dbStatus = 'connected';
-    } catch (_) {
-      dbStatus = 'error';
+  res.status(200).json({ status: 'OK' });
+});
+
+app.get('/api/db-health', async (req, res) => {
+  try {
+    if (!process.env.DATABASE_URL) {
+      return res.status(200).json({ status: 'OK', dbStatus: 'not_configured' });
     }
+    await prisma.$queryRaw`SELECT 1`;
+    return res.status(200).json({
+      status: 'OK',
+      dbStatus: 'connected',
+      env: process.env.VERCEL ? 'vercel' : 'local',
+    });
+  } catch (err) {
+    return res.status(503).json({
+      status: 'ERROR',
+      dbStatus: 'error',
+      error: err.message,
+    });
   }
-  res.json({ status: 'OK', dbStatus, env: process.env.VERCEL ? 'vercel' : 'local' });
+// Full system status – includes DB health with correct HTTP semantics
+app.get('/api/status', async (req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    return res.status(200).json({ status: 'OK', db: 'ok' });
+  } catch {
+    return res.status(503).json({ status: 'ERROR', db: 'fail' });
+  }
 });
 
 module.exports = app;
