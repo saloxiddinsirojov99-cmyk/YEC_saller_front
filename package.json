@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 {
   "name": "yec-gilam-server",
   "version": "2.0.0",
@@ -28,4 +29,29 @@
   "devDependencies": {
     "prisma": "^6.19.3"
   }
-}
+}
+=======
+{
+  "name": "yec-gilam-system",
+  "version": "1.0.0",
+  "description": "YEC Gilam - Order Management System Workspace",
+  "scripts": {
+    "install:server": "npm install --prefix server",
+    "install:client": "npm install --prefix client",
+    "install:all": "npm run install:server && npm run install:client",
+    "server": "npm run dev --prefix server",
+    "client": "npm run dev --prefix client",
+    "db:init": "npm run db:init --prefix server",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "start": "npm run install:all && npm run db:init && npm run server"
+  },
+  "devDependencies": {
+    "@prisma/client": "^7.8.0",
+    "concurrently": "^8.2.2",
+    "prisma": "^7.8.0"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  }
+}
+>>>>>>> origin/master

@@ -1,6 +1,5 @@
 {
   "version": 2,
-<<<<<<< HEAD
   "installCommand": "npm install",
   "buildCommand": "npx prisma generate --schema=./prisma/schema.prisma",
   "rewrites": [
@@ -15,18 +14,4 @@
       "memory": 512
     }
   }
-=======
-  "builds": [
-    {
-      "src": "server/api/**/*.js",
-      "use": "@vercel/node"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/server/api/$1"
-    }
-  ]
->>>>>>> origin/master
 }

@@ -1,5 +1,14 @@
 node_modules/
+<<<<<<< HEAD
 .env
 *.db
 .DS_Store
 yec_gilam.db
+=======
+client/node_modules/
+server/node_modules/
+.env
+dist/
+.DS_Store
+*.log
+>>>>>>> origin/master
