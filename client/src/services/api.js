@@ -70,9 +70,23 @@ export async function loginUser(email, password) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password })
     });
-    return handleResponse(response);
+    // Ensure we handle non-JSON responses gracefully
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      let errorMsg = 'Login xatoligi';
+      try {
+        const errJson = JSON.parse(errorText);
+        errorMsg = errJson.message || errJson.error || errorMsg;
+      } catch {}
+      throw new Error(errorMsg);
+    }
+    return await response.json();
   } catch (err) {
-    handleFetchError(err);
+    // Re‑throw with a clearer message for network issues
+    if (err instanceof TypeError && err.message === 'Failed to fetch') {
+      throw new Error('Serverga ulanishda xatolik. Iltimos, server holatini tekshiring.');
+    }
+    throw err;
   }
 }
 
