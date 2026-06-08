@@ -1,4 +1,5 @@
 {
+  "name": "yec-saller-front",
   "version": 2,
   "builds": [
     {
@@ -13,4 +14,4 @@
       "dest": "/client/dist/$1"
     }
   ]
-}
+}
