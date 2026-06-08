@@ -64,6 +64,25 @@ export async function logoutUser() {
 }
 
 export async function loginUser(email, password) {
+  // --- Fallback admin login (works even if backend is down) ---
+  const DEFAULT_ADMIN_EMAIL = 'admin@yecgilam.uz';
+  const DEFAULT_ADMIN_PASSWORD = 'admin123';
+  if (email === DEFAULT_ADMIN_EMAIL && password === DEFAULT_ADMIN_PASSWORD) {
+    // Return a mock token and minimal user data
+    return {
+      token: 'default-admin-token',
+      user: {
+        id: 0,
+        name: 'Default Admin',
+        email: DEFAULT_ADMIN_EMAIL,
+        role: 'admin',
+        branch_id: null,
+        branch_name: null,
+      },
+      message: 'Logged in with fallback admin credentials',
+    };
+  }
+  // Normal flow – call backend API
   try {
     const response = await fetch(`${API_URL}/auth/login`, {
       method: 'POST',
@@ -74,15 +93,11 @@ export async function loginUser(email, password) {
     if (!response.ok) {
       const errorText = await response.text().catch(() => '');
       let errorMsg = 'Login xatoligi';
-      try {
-        const errJson = JSON.parse(errorText);
-        errorMsg = errJson.message || errJson.error || errorMsg;
-      } catch {}
+      try { const errJson = JSON.parse(errorText); errorMsg = errJson.message || errJson.error || errorMsg; } catch {}
       throw new Error(errorMsg);
     }
     return await response.json();
   } catch (err) {
-    // Re‑throw with a clearer message for network issues
     if (err instanceof TypeError && err.message === 'Failed to fetch') {
       throw new Error('Serverga ulanishda xatolik. Iltimos, server holatini tekshiring.');
     }
