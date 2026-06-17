@@ -1,0 +1,9 @@
+node_modules/
+client/node_modules/
+server/node_modules/
+.env
+*.db
+dist/
+.DS_Store
+*.log
+yec_gilam.db
